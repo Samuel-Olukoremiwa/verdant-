@@ -1,0 +1,4 @@
+import Link from 'next/link'
+import { requireRole } from '@/lib/auth'
+import { SignOutButton } from '@/components/sign-out-button'
+export default async function PortalLayout({children}:{children:React.ReactNode}) { const user=await requireRole(['resident']); const initials=user.name.split(' ').map(x=>x[0]).slice(0,2).join(''); return <div className="portal-shell"><header className="portal-header"><Link href="/portal" className="brand" style={{color:'var(--forest)'}}><span className="brand-mark">V</span><span>Verdant<small style={{color:'var(--moss)'}}>Resident portal</small></span></Link><div className="user-menu"><div><strong>{user.name}</strong><span>Resident account</span></div><div className="avatar">{initials}</div><SignOutButton /></div></header><main id="main-content">{children}</main></div> }
