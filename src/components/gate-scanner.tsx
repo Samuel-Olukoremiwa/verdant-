@@ -13,7 +13,9 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
   const [result, setResult] = useState<ResultState>(null)
   const [processing, setProcessing] = useState(false)
   const scannerRef = useRef<{ clear: () => Promise<void> } | null>(null)
-  const busyRef = useRef(false) // prevents double-processing the same rapid scan
+  const busyRef = useRef(false) // prevents overlapping processing of a scan
+  const lastScanRef = useRef<{ value: string; at: number } | null>(null) // prevents re-logging the same held-up QR code repeatedly
+  const SCAN_COOLDOWN_MS = 8000
   const directionRef = useRef(direction) // scanner callback is registered once on mount, so it must read fresh direction via ref, not closed-over state
   const supabase = createClient()
 
@@ -49,6 +51,12 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
 
   async function handleScan(value: string) {
     if (busyRef.current) return
+
+    const last = lastScanRef.current
+    if (last && last.value === value && Date.now() - last.at < SCAN_COOLDOWN_MS) {
+      return // same code still in frame — don't log it again
+    }
+
     busyRef.current = true
     setProcessing(true)
     setResult(null)
@@ -90,6 +98,7 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
           directionRef.current === 'entry' ? 'entry' : 'exit'
         } logged.`,
       })
+      lastScanRef.current = { value, at: Date.now() }
     } finally {
       setProcessing(false)
       // small cooldown so the same badge isn't logged twice in one breath
