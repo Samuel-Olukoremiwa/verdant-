@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import Link from 'next/link'
 
 export default function GenerateInvoicesPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [summary, setSummary] = useState<{ created: number; skipped: number } | null>(null)
   const [dueTypes, setDueTypes] = useState<{ id: string; name: string; amount: number }[]>([])
   const [form, setForm] = useState({
     due_type_id: '',
@@ -27,6 +29,7 @@ export default function GenerateInvoicesPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+    setSummary(null)
     try {
       const dueType = dueTypes.find((d) => d.id === form.due_type_id)
       if (!dueType) throw new Error('Select a due type')
@@ -39,8 +42,25 @@ export default function GenerateInvoicesPage() {
       if (!houses || houses.length === 0)
         throw new Error('No houses found. Add residents first.')
 
-      // Create one invoice per house for this due type + period
-      const rows = houses.map((h) => ({
+      // Find houses already invoiced for this exact due type + period,
+      // so re-running this form (e.g. by accident) never double-bills anyone.
+      const { data: existing, error: existingError } = await supabase
+        .from('invoices')
+        .select('house_id')
+        .eq('due_type_id', form.due_type_id)
+        .eq('period_label', form.period_label)
+      if (existingError) throw existingError
+
+      const alreadyInvoicedHouseIds = new Set((existing ?? []).map((i) => i.house_id))
+      const housesToInvoice = houses.filter((h) => !alreadyInvoicedHouseIds.has(h.id))
+      const skipped = houses.length - housesToInvoice.length
+
+      if (housesToInvoice.length === 0) {
+        setSummary({ created: 0, skipped })
+        return
+      }
+
+      const rows = housesToInvoice.map((h) => ({
         house_id: h.id,
         due_type_id: form.due_type_id,
         period_label: form.period_label,
@@ -52,7 +72,7 @@ export default function GenerateInvoicesPage() {
       const { error: invoiceError } = await supabase.from('invoices').insert(rows)
       if (invoiceError) throw invoiceError
 
-      router.push('/admin')
+      setSummary({ created: rows.length, skipped })
       router.refresh()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
@@ -105,6 +125,20 @@ export default function GenerateInvoicesPage() {
           />
         </div>
         {error && <p className="text-red-600 text-sm">{error}</p>}
+        {summary && (
+          <p className="text-sm bg-green-50 text-green-700 px-3 py-2 rounded-lg">
+            {summary.created} invoice{summary.created === 1 ? '' : 's'} created.
+            {summary.skipped > 0 &&
+              ` ${summary.skipped} house${
+                summary.skipped === 1 ? '' : 's'
+              } already had an invoice for this period and ${
+                summary.skipped === 1 ? 'was' : 'were'
+              } skipped.`}{' '}
+            <Link href="/admin" className="underline font-medium">
+              Back to dashboard
+            </Link>
+          </p>
+        )}
         <button
           type="submit"
           disabled={loading}

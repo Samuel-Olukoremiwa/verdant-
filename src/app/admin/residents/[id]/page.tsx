@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ToggleActiveButton } from '@/components/toggle-active-button'
+import { ManualPaymentForm } from '@/components/manual-payment-form'
+import { CreateLoginButton } from '@/components/create-login-button'
 
 const naira = (n: number) => `₦${n.toLocaleString()}`
 
@@ -17,6 +19,7 @@ type Resident = {
   move_in_date: string | null
   is_active: boolean
   house_id: string | null
+  auth_user_id: string | null
   houses: { address: string; house_type: string | null } | null
 }
 
@@ -40,7 +43,7 @@ export default async function ResidentDetailPage({
   const { data } = await supabase
     .from('residents')
     .select(
-      'id, full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, is_active, house_id, houses ( address, house_type )'
+      'id, full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, is_active, house_id, auth_user_id, houses ( address, house_type )'
     )
     .eq('id', id)
     .single()
@@ -68,6 +71,9 @@ export default async function ResidentDetailPage({
         <div className="header-actions">
           <Link href="/admin/residents" className="action secondary">
             ← All residents
+          </Link>
+          <Link href={`/admin/residents/${resident.id}/edit`} className="action secondary">
+            Edit
           </Link>
           <ToggleActiveButton residentId={resident.id} isActive={resident.is_active} />
         </div>
@@ -108,6 +114,18 @@ export default async function ResidentDetailPage({
                 ? 'This resident can be scanned in/out at the gate and can log in normally.'
                 : 'This resident\u2019s QR pass will be rejected at the gate. Use this for residents who have moved out.'}
             </p>
+            <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--line)' }}>
+              {resident.auth_user_id ? (
+                <div>
+                  <p style={{ fontSize: '.8rem', color: 'var(--muted)', marginBottom: '.6rem' }}>
+                    ✓ This resident already has a portal login.
+                  </p>
+                  <CreateLoginButton residentId={resident.id} mode="reset" />
+                </div>
+              ) : (
+                <CreateLoginButton residentId={resident.id} mode="create" />
+              )}
+            </div>
           </div>
         </article>
       </div>
@@ -118,21 +136,30 @@ export default async function ResidentDetailPage({
         </div>
         <div className="panel-body">
           {invoices.length > 0 ? (
-            invoices.map((inv) => (
-              <div className="invoice-row" key={inv.id}>
-                <div>
-                  <strong>{inv.due_types?.name ?? 'Estate charge'}</strong>
-                  <span>{inv.period_label ?? 'Current period'}</span>
+            invoices.map((inv) => {
+              const outstanding = Math.max(0, Number(inv.amount) - Number(inv.amount_paid ?? 0))
+              return (
+                <div className="invoice-row" key={inv.id} style={{ flexDirection: 'column', alignItems: 'stretch', display: 'flex', gap: '.4rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: '1rem', alignItems: 'center' }}>
+                    <div>
+                      <strong>{inv.due_types?.name ?? 'Estate charge'}</strong>
+                      <span>{inv.period_label ?? 'Current period'}</span>
+                    </div>
+                    <span className={`pill ${inv.status === 'paid' ? 'good' : ''}`}>
+                      {inv.status}
+                    </span>
+                    <strong>{naira(outstanding)} outstanding</strong>
+                  </div>
+                  {outstanding > 0 && (
+                    <ManualPaymentForm
+                      invoiceId={inv.id}
+                      residentId={resident.id}
+                      outstanding={outstanding}
+                    />
+                  )}
                 </div>
-                <span className={`pill ${inv.status === 'paid' ? 'good' : ''}`}>
-                  {inv.status}
-                </span>
-                <strong>
-                  {naira(Math.max(0, Number(inv.amount) - Number(inv.amount_paid ?? 0)))}{' '}
-                  outstanding
-                </strong>
-              </div>
-            ))
+              )
+            })
           ) : (
             <p className="empty">No charges recorded for this house yet.</p>
           )}
