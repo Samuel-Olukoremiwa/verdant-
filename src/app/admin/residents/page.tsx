@@ -4,7 +4,7 @@ import Link from 'next/link'
 export default async function ResidentsPage() {
   const supabase = await createClient()
 
-  const { data: residents, error } = await supabase
+  const { data: rawResidents, error } = await supabase
     .from('residents')
     .select(`
       id,
@@ -16,6 +16,15 @@ export default async function ResidentsPage() {
       houses ( address, house_type )
     `)
     .order('created_at', { ascending: false })
+
+  const residents = (rawResidents ?? []) as unknown as {
+    id: string
+    full_name: string
+    phone: string | null
+    relationship: string
+    is_active: boolean
+    houses: { address: string; house_type: string | null } | null
+  }[]
 
   return (
     <div className="page-wrap">
@@ -47,10 +56,10 @@ export default async function ResidentsPage() {
           </thead>
           <tbody>
             {residents && residents.length > 0 ? (
-              residents.map((r: { id: string; full_name: string; phone: string | null; relationship: string; is_active: boolean; houses: { address: string; house_type: string | null }[] }) => (
+              residents.map((r) => (
                 <tr key={r.id} className="border-t text-sm">
                   <td className="p-3 font-medium">{r.full_name}</td>
-                  <td className="p-3">{r.houses?.[0]?.address ?? '—'}</td>
+                  <td className="p-3">{r.houses?.address ?? '—'}</td>
                   <td className="p-3">{r.phone ?? '—'}</td>
                   <td className="p-3 capitalize">{r.relationship}</td>
                   <td className="p-3">
