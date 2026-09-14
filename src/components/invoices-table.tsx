@@ -32,6 +32,7 @@ export function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
     })
   }, [invoices, query, status])
 
+  const totalBilled = filtered.reduce((sum, inv) => sum + Number(inv.amount), 0)
   const totalOutstanding = filtered.reduce(
     (sum, inv) => sum + Math.max(0, Number(inv.amount) - Number(inv.amount_paid ?? 0)),
     0
@@ -119,6 +120,17 @@ export function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
               </tr>
             )}
           </tbody>
+          {filtered.length > 0 && (
+            <tfoot>
+              <tr className="border-t-2 bg-gray-50 text-sm font-semibold">
+                <td className="p-3" colSpan={5}>
+                  Total ({filtered.length} invoice{filtered.length === 1 ? '' : 's'}) —{' '}
+                  {naira(totalBilled)} billed
+                </td>
+                <td className="p-3 text-right">{naira(totalOutstanding)}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
     </div>

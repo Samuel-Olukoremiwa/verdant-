@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
 // Called by an admin from a resident's profile to create their portal login.
-// Generates a temporary password rather than emailing an invite link, since
-// that doesn't depend on Supabase's email sending being configured.
+// Sends Supabase's built-in invite email — the resident sets their own
+// password by following the link, so no temporary password is ever
+// generated, shown, or needs relaying by hand.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -54,35 +54,26 @@ export async function POST(
     )
   }
 
-  const tempPassword = crypto
-    .randomBytes(9)
-    .toString('base64')
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .slice(0, 12)
-
-  const { data: created, error: createError } = await service.auth.admin.createUser(
-    {
-      email: resident.email,
-      password: tempPassword,
-      email_confirm: true,
-    }
+  const { data: invited, error: inviteError } = await service.auth.admin.inviteUserByEmail(
+    resident.email,
+    { redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password` }
   )
 
-  if (createError || !created.user) {
+  if (inviteError || !invited.user) {
     return NextResponse.json(
-      { error: createError?.message ?? 'Could not create login' },
+      { error: inviteError?.message ?? 'Could not send invite' },
       { status: 500 }
     )
   }
 
   const { error: linkError } = await service
     .from('residents')
-    .update({ auth_user_id: created.user.id })
+    .update({ auth_user_id: invited.user.id })
     .eq('id', id)
 
   if (linkError) {
     return NextResponse.json({ error: linkError.message }, { status: 500 })
   }
 
-  return NextResponse.json({ email: resident.email, password: tempPassword })
+  return NextResponse.json({ email: resident.email })
 }

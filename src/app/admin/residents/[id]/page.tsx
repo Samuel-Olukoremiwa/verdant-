@@ -17,6 +17,7 @@ type Resident = {
   emergency_contact_name: string | null
   emergency_contact_phone: string | null
   move_in_date: string | null
+  property_allocation_date: string | null
   is_active: boolean
   house_id: string | null
   auth_user_id: string | null
@@ -43,7 +44,7 @@ export default async function ResidentDetailPage({
   const { data } = await supabase
     .from('residents')
     .select(
-      'id, full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, is_active, house_id, auth_user_id, houses ( address, house_type )'
+      'id, full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, property_allocation_date, is_active, house_id, auth_user_id, houses ( address, house_type )'
     )
     .eq('id', id)
     .single()
@@ -88,8 +89,9 @@ export default async function ResidentDetailPage({
             <dl style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: '.85rem' }}>
               <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Phone</dt><dd>{resident.phone ?? '—'}</dd></div>
               <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Email</dt><dd>{resident.email ?? '—'}</dd></div>
-              <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Relationship</dt><dd className="capitalize">{resident.relationship ?? '—'}</dd></div>
+              <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Status</dt><dd>{resident.relationship === 'owner' ? 'Home Owner' : resident.relationship === 'family_member' ? 'Family Member' : resident.relationship === 'tenant' ? 'Tenant' : '—'}</dd></div>
               <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Move-in date</dt><dd>{resident.move_in_date ? new Date(resident.move_in_date).toLocaleDateString() : '—'}</dd></div>
+              <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Property allocation date</dt><dd>{resident.property_allocation_date ? new Date(resident.property_allocation_date).toLocaleDateString() : '—'}</dd></div>
               <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>House type</dt><dd>{resident.houses?.house_type ?? '—'}</dd></div>
               <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Vehicle plate(s)</dt><dd>{resident.vehicle_plate_numbers?.join(', ') || '—'}</dd></div>
               <div><dt style={{ color: 'var(--muted)', fontSize: '.72rem', fontWeight: 800, textTransform: 'uppercase' }}>Emergency contact</dt><dd>{resident.emergency_contact_name ?? '—'}</dd></div>

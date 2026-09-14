@@ -14,7 +14,7 @@ export default async function ResidentsPage() {
       email,
       relationship,
       is_active,
-      houses ( address, house_type )
+      houses ( address, house_type, street_id, streets ( name ) )
     `)
     .order('created_at', { ascending: false })
 
@@ -24,8 +24,18 @@ export default async function ResidentsPage() {
     phone: string | null
     relationship: string
     is_active: boolean
-    houses: { address: string; house_type: string | null } | null
+    houses: {
+      address: string
+      house_type: string | null
+      street_id: string | null
+      streets: { name: string } | null
+    } | null
   }[]
+
+  const { data: streets } = await supabase
+    .from('streets')
+    .select('id, name')
+    .order('name', { ascending: true })
 
   return (
     <div className="page-wrap">
@@ -43,7 +53,7 @@ export default async function ResidentsPage() {
         <p className="text-red-600 mb-4">Error loading residents: {error.message}</p>
       )}
 
-      <ResidentsTable residents={residents} />
+      <ResidentsTable residents={residents} streets={streets ?? []} />
     </div>
   )
 }

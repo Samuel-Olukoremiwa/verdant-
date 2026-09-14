@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
-// Called by an admin to regenerate a resident's password when they've lost
-// access or the original temp password was never captured.
+// Called by an admin to help a resident regain access, whether they lost
+// their password or the original invite was never actioned. Sends the same
+// recovery email the self-service "Forgot password" page uses — no
+// temporary password is generated or needs relaying by hand.
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,27 +41,21 @@ export async function POST(
   if (!resident) {
     return NextResponse.json({ error: 'Resident not found' }, { status: 404 })
   }
-  if (!resident.auth_user_id) {
+  if (!resident.auth_user_id || !resident.email) {
     return NextResponse.json(
       { error: 'This resident has no login yet — use Create portal login instead' },
       { status: 400 }
     )
   }
 
-  const tempPassword = crypto
-    .randomBytes(9)
-    .toString('base64')
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .slice(0, 12)
+  const { error } = await service.auth.resetPasswordForEmail(resident.email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`,
+  })
 
-  const { error: updateError } = await service.auth.admin.updateUserById(
-    resident.auth_user_id,
-    { password: tempPassword }
-  )
-
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ email: resident.email, password: tempPassword })
+  return NextResponse.json({ email: resident.email })
 }
+

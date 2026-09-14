@@ -9,18 +9,31 @@ type Resident = {
   phone: string | null
   relationship: string
   is_active: boolean
-  houses: { address: string; house_type: string | null } | null
+  houses: {
+    address: string
+    house_type: string | null
+    street_id: string | null
+    streets: { name: string } | null
+  } | null
 }
 
-export function ResidentsTable({ residents }: { residents: Resident[] }) {
+export function ResidentsTable({
+  residents,
+  streets,
+}: {
+  residents: Resident[]
+  streets: { id: string; name: string }[]
+}) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all')
+  const [streetId, setStreetId] = useState('all')
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return residents.filter((r) => {
       if (status === 'active' && !r.is_active) return false
       if (status === 'inactive' && r.is_active) return false
+      if (streetId !== 'all' && r.houses?.street_id !== streetId) return false
       if (!q) return true
       return (
         r.full_name.toLowerCase().includes(q) ||
@@ -28,7 +41,7 @@ export function ResidentsTable({ residents }: { residents: Resident[] }) {
         (r.phone ?? '').toLowerCase().includes(q)
       )
     })
-  }, [residents, query, status])
+  }, [residents, query, status, streetId])
 
   return (
     <div>
@@ -40,6 +53,18 @@ export function ResidentsTable({ residents }: { residents: Resident[] }) {
           placeholder="Search by name, house, or phone..."
           className="flex-1 border rounded-lg px-3 py-2 text-sm"
         />
+        <select
+          value={streetId}
+          onChange={(e) => setStreetId(e.target.value)}
+          className="border rounded-lg px-3 py-2 text-sm"
+        >
+          <option value="all">All streets</option>
+          {streets.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as 'all' | 'active' | 'inactive')}
@@ -62,8 +87,9 @@ export function ResidentsTable({ residents }: { residents: Resident[] }) {
             <tr>
               <th className="p-3">Name</th>
               <th className="p-3">House</th>
+              <th className="p-3">Street</th>
               <th className="p-3">Phone</th>
-              <th className="p-3">Relationship</th>
+              <th className="p-3">Occupancy</th>
               <th className="p-3">Status</th>
               <th className="p-3"></th>
             </tr>
@@ -74,8 +100,9 @@ export function ResidentsTable({ residents }: { residents: Resident[] }) {
                 <tr key={r.id} className="border-t text-sm">
                   <td className="p-3 font-medium">{r.full_name}</td>
                   <td className="p-3">{r.houses?.address ?? '—'}</td>
+                  <td className="p-3">{r.houses?.streets?.name ?? '—'}</td>
                   <td className="p-3">{r.phone ?? '—'}</td>
-                  <td className="p-3 capitalize">{r.relationship}</td>
+                  <td className="p-3">{r.relationship === 'owner' ? 'Home Owner' : r.relationship === 'family_member' ? 'Family Member' : r.relationship === 'tenant' ? 'Tenant' : r.relationship}</td>
                   <td className="p-3">
                     <span
                       className={`px-2 py-1 rounded-full text-xs ${
@@ -99,7 +126,7 @@ export function ResidentsTable({ residents }: { residents: Resident[] }) {
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-gray-500">
+                <td colSpan={7} className="p-6 text-center text-gray-500">
                   {residents.length === 0
                     ? 'No residents yet. Click "Add Resident" to get started.'
                     : 'No residents match your search.'}

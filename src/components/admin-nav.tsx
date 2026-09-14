@@ -2,19 +2,34 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
-const navigation: [string, string, string][] = [
-  ['Overview', '/admin', '⌘'],
-  ['Residents', '/admin/residents', '◉'],
-  ['Invoices', '/admin/invoices', '₦'],
-  ['Due types', '/admin/due-types', '☰'],
-  ['Gate activity', '/admin/access-logs', '↗'],
-]
-
-export function AdminNav() {
+export function AdminNav({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [pendingCount, setPendingCount] = useState(0)
+
+  const navigation: [string, string, string][] = [
+    ['Overview', '/admin', '⌘'],
+    ['Residents', '/admin/residents', '◉'],
+    ['Registrations', '/admin/registrations', '✉'],
+    ['Invoices', '/admin/invoices', '₦'],
+    ['Reports', '/admin/reports', '▤'],
+    ['Due types', '/admin/due-types', '☰'],
+    ['Streets', '/admin/streets', '⌂'],
+    ['Gate activity', '/admin/access-logs', '↗'],
+    ...(isSuperAdmin ? ([['Team', '/admin/team', '☺']] as [string, string, string][]) : []),
+  ]
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase
+      .from('registration_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+      .then(({ count }) => setPendingCount(count ?? 0))
+  }, [])
 
   return (
     <>
@@ -42,6 +57,21 @@ export function AdminNav() {
                 {icon}
               </span>
               {label}
+              {label === 'Registrations' && pendingCount > 0 && (
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    background: '#e8542a',
+                    color: '#fff',
+                    fontSize: '.7rem',
+                    fontWeight: 800,
+                    borderRadius: '999px',
+                    padding: '.05rem .5rem',
+                  }}
+                >
+                  {pendingCount}
+                </span>
+              )}
             </Link>
           )
         })}

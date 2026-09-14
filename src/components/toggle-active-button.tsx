@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 export function ToggleActiveButton({
   residentId,
@@ -12,29 +11,31 @@ export function ToggleActiveButton({
   isActive: boolean
 }) {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
 
   async function handleToggle() {
     const confirmed = window.confirm(
       isActive
-        ? 'Mark this resident as inactive? Their gate pass will stop working.'
-        : 'Reactivate this resident? Their gate pass will work again.'
+        ? 'Mark this resident as inactive? Their gate pass will stop working AND their portal login will be locked immediately — use this when someone has moved out.'
+        : 'Reactivate this resident? Their gate pass and portal login will both work again.'
     )
     if (!confirmed) return
 
     setLoading(true)
-    const { error } = await supabase
-      .from('residents')
-      .update({ is_active: !isActive })
-      .eq('id', residentId)
-    setLoading(false)
-
-    if (error) {
-      alert(`Could not update status: ${error.message}`)
-      return
+    try {
+      const res = await fetch(`/api/admin/residents/${residentId}/toggle-active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !isActive }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Could not update status')
+      router.refresh()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setLoading(false)
     }
-    router.refresh()
   }
 
   return (
