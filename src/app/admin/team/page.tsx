@@ -85,3 +85,5 @@ export default async function TeamPage() {
     </div>
   )
 }
+
+export const metadata = {title: 'Admin Team', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}

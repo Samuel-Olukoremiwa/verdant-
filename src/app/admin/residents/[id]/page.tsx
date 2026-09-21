@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { ToggleActiveButton } from '@/components/toggle-active-button'
 import { ManualPaymentForm } from '@/components/manual-payment-form'
 import { CreateLoginButton } from '@/components/create-login-button'
+import { BillingResponsibilityCard } from '@/components/billing-responsibility-card'
 
 const naira = (n: number) => `₦${n.toLocaleString()}`
 
@@ -21,7 +22,7 @@ type Resident = {
   is_active: boolean
   house_id: string | null
   auth_user_id: string | null
-  houses: { address: string; house_type: string | null } | null
+  houses: { address: string; house_type: string | null; billing_responsible_resident_id: string | null } | null
 }
 
 type Invoice = {
@@ -44,7 +45,7 @@ export default async function ResidentDetailPage({
   const { data } = await supabase
     .from('residents')
     .select(
-      'id, full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, property_allocation_date, is_active, house_id, auth_user_id, houses ( address, house_type )'
+      'id, full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, property_allocation_date, is_active, house_id, auth_user_id, houses:houses!residents_house_id_fkey ( address, house_type, billing_responsible_resident_id )'
     )
     .eq('id', id)
     .single()
@@ -132,6 +133,15 @@ export default async function ResidentDetailPage({
         </article>
       </div>
 
+      {resident.house_id && (
+        <div style={{ marginTop: '1.25rem' }}>
+          <BillingResponsibilityCard
+            houseId={resident.house_id}
+            currentResponsibleId={resident.houses?.billing_responsible_resident_id ?? null}
+          />
+        </div>
+      )}
+
       <article className="panel" style={{ marginTop: '1.25rem' }}>
         <div className="panel-head">
           <h2>Estate charges for this house</h2>
@@ -170,3 +180,5 @@ export default async function ResidentDetailPage({
     </div>
   )
 }
+
+export const metadata = {title: 'Admin Residents', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}

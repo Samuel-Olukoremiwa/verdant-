@@ -26,6 +26,7 @@ export async function initializeTransaction(params: {
       email: params.email,
       amount: params.amountKobo,
       reference: params.reference,
+      currency: 'NGN',
       callback_url: params.callbackUrl,
       metadata: params.metadata ?? {},
     }),
@@ -49,6 +50,7 @@ export async function verifyTransaction(reference: string) {
   return data.data as {
     status: string // 'success' | 'failed' | 'abandoned'
     reference: string
+    currency: string
     amount: number // kobo
     paid_at: string | null
     metadata: Record<string, unknown>

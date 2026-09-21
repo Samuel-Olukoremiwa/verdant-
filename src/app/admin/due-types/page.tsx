@@ -51,3 +51,5 @@ export default async function DueTypesPage() {
     </div>
   )
 }
+
+export const metadata = {title: 'Admin Due Types', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}

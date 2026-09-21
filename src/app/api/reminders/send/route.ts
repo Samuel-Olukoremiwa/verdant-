@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sendDueReminders } from '@/lib/reminders'
 
+export const maxDuration = 60
+
 // POST — triggered by the admin's "Send reminders" button in the UI.
 // Requires a real admin session.
 export async function POST() {

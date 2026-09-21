@@ -6,6 +6,11 @@ export function SendRemindersButton() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{
     emailsSent: number
+    emailsFailed: number
+    smsAccepted: number
+    smsFailed: number
+    smsUnknown: number
+    smsSkipped: number
     skippedNoEmail: number
     invoicesChecked: number
   } | null>(null)
@@ -30,16 +35,16 @@ export function SendRemindersButton() {
   return (
     <div>
       <button onClick={handleClick} disabled={loading} className="action secondary">
-        {loading ? 'Sending...' : 'Send due reminders'}
+        {loading ? 'Sending...' : 'Send email & SMS reminders'}
       </button>
       {result && (
         <p className="text-xs text-green-700 mt-2">
-          Sent {result.emailsSent} reminder{result.emailsSent === 1 ? '' : 's'}
+          Sent {result.emailsSent} email reminder{result.emailsSent === 1 ? '' : 's'}
           {result.skippedNoEmail > 0
             ? ` (${result.skippedNoEmail} resident${result.skippedNoEmail === 1 ? '' : 's'} skipped — no email on file)`
             : ''}
           . Checked {result.invoicesChecked} due/overdue invoice
-          {result.invoicesChecked === 1 ? '' : 's'}.
+          {result.invoicesChecked === 1 ? '' : 's'}. SMS: {result.smsAccepted} accepted, {result.smsFailed} failed, {result.smsUnknown} unconfirmed, {result.smsSkipped} already attempted today. Email failures: {result.emailsFailed}. SMS acceptance does not confirm delivery.
         </p>
       )}
       {error && <p className="text-xs text-red-600 mt-2">{error}</p>}

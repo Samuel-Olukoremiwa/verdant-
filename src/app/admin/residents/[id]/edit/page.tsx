@@ -80,7 +80,7 @@ export default function EditResidentPage({
       const { data, error } = await supabase
         .from('residents')
         .select(
-          'full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, property_allocation_date, house_id, houses ( house_type, street_id, house_number )'
+          'full_name, phone, email, relationship, vehicle_plate_numbers, emergency_contact_name, emergency_contact_phone, move_in_date, property_allocation_date, house_id, houses:houses!residents_house_id_fkey ( house_type, street_id, house_number )'
         )
         .eq('id', id)
         .single()

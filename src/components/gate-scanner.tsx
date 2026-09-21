@@ -25,30 +25,6 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
 
   useEffect(() => {
     let mounted = true
-
-    import('html5-qrcode').then(({ Html5QrcodeScanner }) => {
-      if (!mounted) return
-      const scanner = new Html5QrcodeScanner(
-        'qr-reader',
-        { fps: 10, qrbox: 250 },
-        false
-      )
-      scanner.render(
-        (decodedText: string) => handleScan(decodedText),
-        () => {
-          /* called continuously while nothing is in frame — ignore */
-        }
-      )
-      scannerRef.current = scanner
-    })
-
-    return () => {
-      mounted = false
-      scannerRef.current?.clear().catch(() => {})
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   async function handleScan(value: string) {
     if (busyRef.current) return
 
@@ -107,6 +83,31 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
       }, 2000)
     }
   }
+
+
+    import('html5-qrcode').then(({ Html5QrcodeScanner }) => {
+      if (!mounted) return
+      const scanner = new Html5QrcodeScanner(
+        'qr-reader',
+        { fps: 10, qrbox: 250 },
+        false
+      )
+      scanner.render(
+        (decodedText: string) => handleScan(decodedText),
+        () => {
+          /* called continuously while nothing is in frame — ignore */
+        }
+      )
+      scannerRef.current = scanner
+    })
+
+    return () => {
+      mounted = false
+      scannerRef.current?.clear().catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
 
   return (
     <div className="bg-white border rounded-xl shadow p-5">

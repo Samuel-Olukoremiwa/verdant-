@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -13,6 +13,7 @@ export function ManualPaymentForm({
   residentId: string
   outstanding: number
 }) {
+  const referenceRef = useRef<string | null>(null)
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState(String(outstanding))
   const [loading, setLoading] = useState(false)
@@ -30,36 +31,13 @@ export function ManualPaymentForm({
     }
     setLoading(true)
     try {
-      // Manual/offline payments (cash, bank transfer without Paystack) are recorded
-      // with a MANUAL- reference so they're distinguishable from gateway payments.
-      const reference = `MANUAL-${Date.now()}`
-      const { error: payError } = await supabase.from('payments').insert({
-        invoice_id: invoiceId,
-        resident_id: residentId,
-        amount: amt,
-        paystack_reference: reference,
-        status: 'success',
-        paid_at: new Date().toISOString(),
+      const reference = referenceRef.current ?? `MANUAL-${crypto.randomUUID()}`
+      referenceRef.current = reference
+      const { error: paymentError } = await supabase.rpc('record_estate_manual_payment', {
+        p_invoice: invoiceId, p_resident: residentId, p_amount: amt, p_reference: reference,
       })
-      if (payError) throw payError
-
-      const { data: invoice, error: invoiceFetchError } = await supabase
-        .from('invoices')
-        .select('amount, amount_paid')
-        .eq('id', invoiceId)
-        .single()
-      if (invoiceFetchError || !invoice) {
-        throw invoiceFetchError ?? new Error('Invoice not found')
-      }
-
-      const newAmountPaid = Number(invoice.amount_paid ?? 0) + amt
-      const newStatus = newAmountPaid >= Number(invoice.amount) ? 'paid' : 'partial'
-
-      const { error: invoiceUpdateError } = await supabase
-        .from('invoices')
-        .update({ amount_paid: newAmountPaid, status: newStatus })
-        .eq('id', invoiceId)
-      if (invoiceUpdateError) throw invoiceUpdateError
+      if (paymentError) throw new Error(paymentError.message)
+      referenceRef.current = null
 
       setOpen(false)
       router.refresh()
@@ -85,10 +63,11 @@ export function ManualPaymentForm({
     <form onSubmit={handleSubmit} className="flex items-center gap-2 mt-1">
       <input
         type="number"
-        min="0"
+        min="0.01"
+        max={outstanding}
         step="0.01"
         value={amount}
-        onChange={(e) => setAmount(e.target.value)}
+        onChange={(e) => { setAmount(e.target.value); referenceRef.current = null }}
         className="border rounded px-2 py-1 text-xs w-24"
       />
       <button

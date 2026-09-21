@@ -1,17 +1,18 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
+import { readAll } from '@/lib/read-all'
 import { InvoicesTable } from '@/components/invoices-table'
 import { SendRemindersButton } from '@/components/send-reminders-button'
 
 export default async function InvoicesPage() {
   const supabase = await createClient()
 
-  const { data: rawInvoices, error } = await supabase
+  const rawInvoices = await readAll((from,to) => supabase
     .from('invoices')
     .select(
       'id, period_label, amount, amount_paid, status, due_date, houses ( address ), due_types ( name )'
     )
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false }).order('id').range(from,to))
 
   const invoices = (rawInvoices ?? []) as unknown as {
     id: string
@@ -42,7 +43,7 @@ export default async function InvoicesPage() {
         </div>
       </div>
 
-      {error && <p className="text-red-600 mb-4">Error loading invoices: {error.message}</p>}
+
 
       <div style={{ marginBottom: '1rem' }}>
         <SendRemindersButton />
@@ -52,3 +53,5 @@ export default async function InvoicesPage() {
     </div>
   )
 }
+
+export const metadata = {title: 'Admin Invoices', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}

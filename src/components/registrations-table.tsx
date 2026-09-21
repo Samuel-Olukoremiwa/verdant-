@@ -36,7 +36,7 @@ function CopyLinkButton() {
 function RequestRow({ req }: { req: Request }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [credentials, setCredentials] = useState<{ email: string } | null>(null)
+  const [credentials, setCredentials] = useState<{ email: string; sms?: { message: string } } | null>(null)
   const [declining, setDeclining] = useState(false)
   const [reason, setReason] = useState('')
   // Local status so the UI updates instantly without a server refetch —
@@ -179,6 +179,7 @@ function RequestRow({ req }: { req: Request }) {
         </div>
       )}
 
+      {credentials?.sms && <p role="status" className="text-sm mt-3">{credentials.sms.message}</p>}
       {error && (
         <p className="text-xs mt-2" style={{ color: '#a63e30' }}>
           {error}

@@ -1,89 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { initializeTransaction } from '@/lib/paystack'
 
-// Called by a logged-in resident to start paying one invoice.
+// The same database function prices both the read-only quote and checkout.
 export async function POST(req: NextRequest) {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
+  let body
+  try { body = await req.json() } catch {
+    return NextResponse.json({ error: 'Invalid payment request' }, { status: 400 })
   }
-
-  const { invoice_id } = await req.json()
-  if (!invoice_id) {
-    return NextResponse.json({ error: 'invoice_id is required' }, { status: 400 })
+  if (!body || !Array.isArray(body.items) || !body.items.length || body.items.length > 120) {
+    return NextResponse.json({ error: 'Choose between 1 and 120 payment items' }, { status: 400 })
   }
-
-  // Confirm this resident actually owns the house this invoice belongs to.
-  // (RLS also enforces this, but we check explicitly for a clear error message.)
-  const { data: resident } = await supabase
-    .from('residents')
-    .select('id, email, house_id')
-    .eq('auth_user_id', user.id)
-    .single()
-
-  if (!resident) {
-    return NextResponse.json({ error: 'No resident profile found' }, { status: 403 })
+  const quoteOnly = body.quote_only === true
+  if (!quoteOnly && (!Number.isSafeInteger(body.expected_total_kobo) || body.expected_total_kobo <= 0)) {
+    return NextResponse.json({ error: 'Review the payment amount first' }, { status: 400 })
   }
-
-  const { data: invoice } = await supabase
-    .from('invoices')
-    .select('id, amount, amount_paid, house_id, status')
-    .eq('id', invoice_id)
-    .single()
-
-  if (!invoice || invoice.house_id !== resident.house_id) {
-    return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
-  }
-
-  const outstanding = Number(invoice.amount) - Number(invoice.amount_paid ?? 0)
-  if (outstanding <= 0) {
-    return NextResponse.json({ error: 'This invoice is already paid' }, { status: 400 })
-  }
-
-  const email = resident.email ?? user.email
-  if (!email) {
-    return NextResponse.json(
-      { error: 'No email on file to receive a receipt' },
-      { status: 400 }
-    )
-  }
-
-  // Unique reference we control, so we can find our payment row after Paystack redirects back.
-  const reference = `INV-${invoice.id.slice(0, 8)}-${Date.now()}`
-
-  // Create a pending payment record up front (service role, since a resident
-  // can only SELECT their own payments per RLS, not INSERT).
+  const reference = `INV-${randomUUID()}`
   const service = createServiceClient()
-  const { error: insertError } = await service.from('payments').insert({
-    invoice_id: invoice.id,
-    resident_id: resident.id,
-    amount: outstanding,
-    paystack_reference: reference,
-    status: 'pending',
+  const { data, error } = await service.rpc('prepare_estate_payment', {
+    p_auth_user: user.id, p_items: body.items, p_reference: reference,
+    p_expected_kobo: quoteOnly ? null : body.expected_total_kobo, p_quote_only: quoteOnly,
   })
-  if (insertError) {
-    return NextResponse.json({ error: insertError.message }, { status: 500 })
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
   }
-
-  const origin = req.nextUrl.origin
+  if (quoteOnly) return NextResponse.json({ total_kobo: data.total_kobo, lines: data.lines })
+  const email = data.email || user.email
+  if (!email) return NextResponse.json({ error: 'No receipt email available; contact the estate office' }, { status: 400 })
   try {
     const tx = await initializeTransaction({
-      email,
-      amountKobo: Math.round(outstanding * 100),
-      reference,
-      callbackUrl: `${origin}/portal/payment/callback`,
-      metadata: { invoice_id: invoice.id, resident_id: resident.id },
+      email, amountKobo: data.total_kobo, reference,
+      callbackUrl: `${req.nextUrl.origin}/portal/payment/callback`,
+      metadata: { resident_id: data.resident_id },
     })
     return NextResponse.json({ authorization_url: tx.authorization_url })
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Payment initialization failed' },
-      { status: 500 }
-    )
+  } catch {
+    // Retain the reference: an upstream timeout may still have created a transaction.
+    return NextResponse.json({ error: 'Could not start checkout. Please try again.' }, { status: 502 })
   }
 }

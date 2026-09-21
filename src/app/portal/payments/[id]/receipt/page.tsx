@@ -16,7 +16,7 @@ export default async function ReceiptPage({
 
   const { data: resident } = await supabase
     .from('residents')
-    .select('id, full_name, houses ( address )')
+    .select('id, full_name, houses:houses!residents_house_id_fkey ( address )')
     .eq('auth_user_id', user.id)
     .single()
 
@@ -51,8 +51,8 @@ export default async function ReceiptPage({
       <div className="bg-white border rounded-xl shadow p-8">
         <div className="flex justify-between items-start mb-8 border-b pb-6">
           <div>
-            <h1 className="text-xl font-bold">Verdant Estate</h1>
-            <p className="text-sm text-gray-500">Evergreen Estate, Lagos</p>
+            <h1 className="text-xl font-bold">Verdant</h1>
+            <p className="text-sm text-gray-500">Sample estate, Lagos</p>
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-500">Receipt</p>
@@ -111,9 +111,11 @@ export default async function ReceiptPage({
 
         <p className="text-xs text-gray-400 text-center pt-6 border-t">
           This receipt was generated automatically and confirms a successful
-          payment via Paystack.
+          payment {payment.paystack_reference?.startsWith('MANUAL-') ? 'recorded by the estate office' : 'via Paystack'}.
         </p>
       </div>
     </div>
   )
 }
+
+export const metadata = {title: 'Portal Payments Receipt', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}

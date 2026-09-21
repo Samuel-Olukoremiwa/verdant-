@@ -1,5 +1,6 @@
 'use client'
 
+import {useConfirmDialog} from './confirm-dialog'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -11,10 +12,11 @@ export function ToggleActiveButton({
   isActive: boolean
 }) {
   const router = useRouter()
+  const {confirm,confirmation}=useConfirmDialog()
   const [loading, setLoading] = useState(false)
 
   async function handleToggle() {
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       isActive
         ? 'Mark this resident as inactive? Their gate pass will stop working AND their portal login will be locked immediately — use this when someone has moved out.'
         : 'Reactivate this resident? Their gate pass and portal login will both work again.'
@@ -39,8 +41,8 @@ export function ToggleActiveButton({
   }
 
   return (
-    <button onClick={handleToggle} disabled={loading} className="action secondary">
+    <>{confirmation}<button onClick={handleToggle} disabled={loading} className="action secondary">
       {loading ? 'Updating...' : isActive ? 'Mark inactive' : 'Reactivate'}
-    </button>
+    </button></>
   )
 }

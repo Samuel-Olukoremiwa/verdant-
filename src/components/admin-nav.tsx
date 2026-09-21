@@ -1,5 +1,6 @@
 'use client'
 
+import {SquaresFourIcon, UsersIcon, EnvelopeIcon, ReceiptIcon, WalletIcon, ChartBarIcon, ListChecksIcon, MapPinIcon, DoorIcon, UserGearIcon, ListIcon, XIcon, type Icon} from '@phosphor-icons/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -10,16 +11,17 @@ export function AdminNav({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const [open, setOpen] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
 
-  const navigation: [string, string, string][] = [
-    ['Overview', '/admin', '⌘'],
-    ['Residents', '/admin/residents', '◉'],
-    ['Registrations', '/admin/registrations', '✉'],
-    ['Invoices', '/admin/invoices', '₦'],
-    ['Reports', '/admin/reports', '▤'],
-    ['Due types', '/admin/due-types', '☰'],
-    ['Streets', '/admin/streets', '⌂'],
-    ['Gate activity', '/admin/access-logs', '↗'],
-    ...(isSuperAdmin ? ([['Team', '/admin/team', '☺']] as [string, string, string][]) : []),
+  const navigation: [string, string, Icon][] = [
+    ['Overview', '/admin', SquaresFourIcon],
+    ['Residents', '/admin/residents', UsersIcon],
+    ['Registrations', '/admin/registrations', EnvelopeIcon],
+    ['Invoices', '/admin/invoices', ReceiptIcon],
+    ['Expenses', '/admin/expenses', WalletIcon],
+    ['Reports', '/admin/reports', ChartBarIcon],
+    ['Due types', '/admin/due-types', ListChecksIcon],
+    ['Streets', '/admin/streets', MapPinIcon],
+    ['Gate activity', '/admin/access-logs', DoorIcon],
+    ...(isSuperAdmin ? ([['Team', '/admin/team', UserGearIcon]] as [string, string, Icon][]) : []),
   ]
 
   useEffect(() => {
@@ -38,23 +40,25 @@ export function AdminNav({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         className="mobile-nav-toggle"
         aria-label={open ? 'Close menu' : 'Open menu'}
         aria-expanded={open}
+        aria-controls="workspace-navigation"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? '✕' : '☰'}
+        {open ? <XIcon size={20}/> : <ListIcon size={20}/>}
       </button>
-      <nav className={`nav-links${open ? ' open' : ''}`}>
-        {navigation.map(([label, href, icon]) => {
+      <nav id="workspace-navigation" aria-label="Workspace" className={`nav-links${open ? ' open' : ''}`}>
+        {navigation.map(([label, href, IconComponent]) => {
           const isActive =
             href === '/admin' ? pathname === href : pathname.startsWith(href)
           return (
             <Link
               key={href}
               href={href}
+              aria-current={isActive ? "page" : undefined}
               className={`side-link${isActive ? ' active' : ''}`}
               onClick={() => setOpen(false)}
             >
               <span className="side-icon" aria-hidden="true">
-                {icon}
+                <IconComponent size={20}/>
               </span>
               {label}
               {label === 'Registrations' && pendingCount > 0 && (

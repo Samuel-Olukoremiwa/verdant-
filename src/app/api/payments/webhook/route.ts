@@ -8,6 +8,7 @@ import { applyConfirmedPayment } from '@/lib/payment-processing'
 // then re-verify the transaction status directly with Paystack's API
 // before trusting anything.
 export async function POST(req: NextRequest) {
+  if (!process.env.PAYSTACK_SECRET_KEY) return NextResponse.json({ error: 'Payment service unavailable' }, { status: 503 })
   const rawBody = await req.text()
   const signature = req.headers.get('x-paystack-signature')
 
@@ -20,8 +21,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
   }
 
-  const event = JSON.parse(rawBody)
+  let event
+  try { event = JSON.parse(rawBody) } catch { return NextResponse.json({ error: 'Invalid payload' }, { status: 400 }) }
 
+  try {
   if (event.event === 'charge.success') {
     const reference = event.data.reference as string
 
@@ -31,8 +34,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ received: true, note: 'not successful on verify' })
     }
 
-    await applyConfirmedPayment(reference, verified.amount / 100)
+    if (verified.reference !== reference) throw new Error('Payment reference mismatch')
+    await applyConfirmedPayment(verified)
   }
 
   return NextResponse.json({ received: true })
+  } catch {
+    return NextResponse.json({ error: 'Payment confirmation failed; retry required' }, { status: 500 })
+  }
 }

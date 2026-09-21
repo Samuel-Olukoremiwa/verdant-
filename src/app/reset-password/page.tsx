@@ -1,4 +1,6 @@
 'use client'
+import {SiteTools} from '@/components/site-tools'
+import {PasswordInput} from '@/components/password-input'
 import Link from 'next/link'
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -55,7 +57,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main className="login-page">
+    <main id="main-content" className="login-page"><div className="auth-tools"><SiteTools/></div>
       <section className="login-panel">
         <Link href="/" className="brand login-brand">
           <span className="brand-mark">V</span>
@@ -79,10 +81,11 @@ export default function ResetPasswordPage() {
           <form onSubmit={submit} className="login-form">
             <label>
               New password
-              <input
+              <PasswordInput
                 required
-                type="password"
+                minLength={8}
                 autoComplete="new-password"
+                aria-label="New password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 8 characters"
@@ -90,10 +93,11 @@ export default function ResetPasswordPage() {
             </label>
             <label>
               Confirm new password
-              <input
+              <PasswordInput
                 required
-                type="password"
+                minLength={8}
                 autoComplete="new-password"
+                aria-label="Confirm new password"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
               />

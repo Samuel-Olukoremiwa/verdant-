@@ -1,71 +1,31 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function PaymentCallbackPage() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [status, setStatus] = useState<'checking' | 'success' | 'failed' | 'error'>(
-    'checking'
-  )
-
+  const params = useSearchParams()
+  const reference = params.get('reference') || params.get('trxref')
+  const [result, setResult] = useState<{ reference: string; status: string; error?: string } | null>(null)
   useEffect(() => {
-    const reference = searchParams.get('reference') || searchParams.get('trxref')
-    if (!reference) {
-      setStatus('error')
-      return
-    }
-    fetch(`/api/payments/verify?reference=${encodeURIComponent(reference)}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status === 'success') setStatus('success')
-        else if (data.error) setStatus('error')
-        else setStatus('failed')
+    if (!reference) return
+    let active = true
+    fetch(`/api/payments/verify?reference=${encodeURIComponent(reference)}`, { cache: 'no-store' })
+      .then(async res => {
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Verification failed')
+        if (active) { setResult({ reference, status: data.status }); if (data.status === 'success') router.refresh() }
       })
-      .catch(() => setStatus('error'))
-  }, [searchParams])
-
-  return (
-    <div className="max-w-md mx-auto p-10 text-center">
-      {status === 'checking' && (
-        <>
-          <p className="text-lg font-medium">Confirming your payment...</p>
-          <p className="text-sm text-gray-500 mt-2">This only takes a moment.</p>
-        </>
-      )}
-      {status === 'success' && (
-        <>
-          <p className="text-2xl mb-2">✅</p>
-          <p className="text-lg font-medium text-green-700">Payment confirmed!</p>
-          <p className="text-sm text-gray-500 mt-2">
-            Your invoice has been updated.
-          </p>
-        </>
-      )}
-      {status === 'failed' && (
-        <>
-          <p className="text-lg font-medium text-orange-700">Payment not completed</p>
-          <p className="text-sm text-gray-500 mt-2">
-            It looks like the payment wasn&apos;t successful. You can try again.
-          </p>
-        </>
-      )}
-      {status === 'error' && (
-        <>
-          <p className="text-lg font-medium text-red-700">Something went wrong</p>
-          <p className="text-sm text-gray-500 mt-2">
-            We couldn&apos;t confirm this payment automatically. Please contact the
-            estate office with your reference number if you were charged.
-          </p>
-        </>
-      )}
-      <button
-        onClick={() => router.push('/portal')}
-        className="mt-6 bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700"
-      >
-        Back to Portal
-      </button>
-    </div>
-  )
+      .catch(err => { if (active) setResult({ reference, status: 'error', error: err.message }) })
+    return () => { active = false }
+  }, [reference, router])
+  const status = !reference ? 'missing' : result?.reference === reference ? result.status : 'checking'
+  return <div className="max-w-lg mx-auto p-10 text-center space-y-4" aria-live="polite">
+    <h1 className="text-xl font-semibold">{status === 'success' ? 'Payment confirmed' : status === 'checking' ? 'Confirming your payment…' : status === 'missing' ? 'Payment reference missing' : 'Payment not yet confirmed'}</h1>
+    <p>{status === 'success' ? 'Your invoice balances have been updated.' : status === 'checking' ? 'Please wait while we verify and record your payment.' : 'If you were charged, do not pay again. Retry verification or contact the estate office with your reference.'}</p>
+    {reference && <p className="break-all">Reference: {reference}</p>}
+    {result?.error && <p role="alert" className="text-red-700">{result.error}</p>}
+    {reference && status !== 'success' && status !== 'checking' && <button className="action secondary" onClick={() => window.location.reload()}>Retry verification</button>}
+    <button className="action" onClick={() => { router.replace('/portal'); router.refresh() }}>Back to portal</button>
+  </div>
 }

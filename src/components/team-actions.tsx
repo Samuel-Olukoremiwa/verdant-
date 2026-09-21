@@ -1,5 +1,6 @@
 'use client'
 
+import {useConfirmDialog} from './confirm-dialog'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
@@ -17,6 +18,7 @@ export function TeamActions({
   isOnlySuperAdmin: boolean
 }) {
   const router = useRouter()
+  const {confirm,confirmation}=useConfirmDialog()
   const [role, setRole] = useState(currentRole)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,9 +46,9 @@ export function TeamActions({
 
   async function remove() {
     if (
-      !window.confirm(
+      !(await confirm(
         "Remove this person's admin/staff access? This does not delete their resident record, if they have one."
-      )
+      ))
     ) {
       return
     }
@@ -68,8 +70,9 @@ export function TeamActions({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '.4rem' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
+      {confirmation}<div style={{ display: 'flex', alignItems: 'center', gap: '.5rem' }}>
         <select
+          aria-label="Staff role"
           value={role}
           onChange={(e) => setRole(e.target.value)}
           disabled={loading || (isOnlySuperAdmin && isSelf)}

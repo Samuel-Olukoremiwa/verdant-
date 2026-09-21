@@ -1,4 +1,5 @@
 'use client'
+import {SiteTools} from '@/components/site-tools'
 import Link from 'next/link'
 import { FormEvent, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -25,7 +26,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="login-page">
+    <main id="main-content" className="login-page"><div className="auth-tools"><SiteTools/></div>
       <section className="login-panel">
         <Link href="/" className="brand login-brand">
           <span className="brand-mark">V</span>

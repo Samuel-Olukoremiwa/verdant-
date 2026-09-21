@@ -1,3 +1,4 @@
+import { dispatchSms } from '@/lib/sms-dispatch'
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { createClient } from '@/lib/supabase/server'
@@ -109,10 +110,12 @@ export async function POST(
     )
   }
 
-  await service.from('residents').update({ auth_user_id: invited.user.id }).eq('id', resident.id)
+  const { error: linkError } = await service.from('residents').update({ auth_user_id: invited.user.id }).eq('id', resident.id)
+
+  if (linkError) return NextResponse.json({ error: 'The invitation was sent, but linking the resident account failed. Please contact the administrator before retrying.' }, { status: 500 })
 
   // 4. Mark the request as approved
-  await service
+  const { error: approvalError } = await service
     .from('registration_requests')
     .update({
       status: 'approved',
@@ -122,5 +125,7 @@ export async function POST(
     })
     .eq('id', id)
 
-  return NextResponse.json({ email: reg.email, residentName: fullName })
+  if (approvalError) return NextResponse.json({ error: 'The resident account was created, but saving approval failed. Please contact the administrator before retrying.' }, { status: 500 })
+  const sms = await dispatchSms(`registration:${id}`, 'registration', reg.phone ?? '', 'Verdant: Your estate registration is approved. Check your email, including spam, for the invitation to set your password and access the resident portal.')
+  return NextResponse.json({ email: reg.email, residentName: fullName, sms })
 }

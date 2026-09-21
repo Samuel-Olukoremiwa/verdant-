@@ -20,12 +20,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'reference is required' }, { status: 400 })
   }
 
+  const { data: resident } = await supabase.from('residents').select('id').eq('auth_user_id', user.id).eq('is_active', true).maybeSingle()
+  if (!resident) return NextResponse.json({ error: 'Resident account unavailable' }, { status: 403 })
+  const { data: payment, error: lookupError } = await supabase.from('payments').select('id').eq('paystack_reference', reference).eq('resident_id', resident.id).limit(1)
+  if (lookupError) return NextResponse.json({ error: 'Could not look up payment' }, { status: 500 })
+  if (!payment?.length) return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
+
   try {
     const verified = await verifyTransaction(reference)
     if (verified.status !== 'success') {
       return NextResponse.json({ status: verified.status })
     }
-    await applyConfirmedPayment(reference, verified.amount / 100)
+    if (verified.reference !== reference) throw new Error('Payment reference mismatch')
+    await applyConfirmedPayment(verified)
     return NextResponse.json({ status: 'success' })
   } catch (err) {
     return NextResponse.json(

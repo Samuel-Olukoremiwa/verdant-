@@ -17,11 +17,20 @@ type Invoice = {
 
 export function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState<'all' | 'unpaid' | 'partial' | 'paid'>('all')
+  const [status, setStatus] = useState('all')
+  const [columns, setColumns] = useState<Record<string, string>>({})
+  const value = (inv: Invoice, column: string) => column === 'House' ? inv.houses?.address ?? '—' : column === 'Charge' ? inv.due_types?.name ?? 'Estate charge' : column === 'Period' ? inv.period_label ?? '—' : inv.due_date ?? '—'
+  const headings = ['House', 'Charge', 'Period', 'Due date']
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return invoices.filter((inv) => {
+      for (const column of ['House', 'Charge', 'Period', 'Due date']) if (columns[column] && value(inv, column) !== columns[column]) return false
+      const balance = Math.max(0, Number(inv.amount)-Number(inv.amount_paid ?? 0))
+      if (columns.Outstanding === 'zero' && balance !== 0) return false
+      if (columns.Outstanding === 'positive' && balance <= 0) return false
+      if (columns.Outstanding === 'under5000' && !(balance > 0 && balance < 5000)) return false
+      if (columns.Outstanding === '5000plus' && balance < 5000) return false
       if (status !== 'all' && inv.status !== status) return false
       if (!q) return true
       return (
@@ -30,7 +39,7 @@ export function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
         (inv.period_label ?? '').toLowerCase().includes(q)
       )
     })
-  }, [invoices, query, status])
+  }, [invoices, query, status, columns])
 
   const totalBilled = filtered.reduce((sum, inv) => sum + Number(inv.amount), 0)
   const totalOutstanding = filtered.reduce(
@@ -48,16 +57,7 @@ export function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
           placeholder="Search by house, due type, or period..."
           className="flex-1 border rounded-lg px-3 py-2 text-sm"
         />
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as 'all' | 'unpaid' | 'partial' | 'paid')}
-          className="border rounded-lg px-3 py-2 text-sm"
-        >
-          <option value="all">All statuses</option>
-          <option value="unpaid">Unpaid</option>
-          <option value="partial">Partial</option>
-          <option value="paid">Paid</option>
-        </select>
+        <button className="action secondary" onClick={() => { setQuery(''); setStatus('all'); setColumns({}) }}>Clear filters</button>
       </div>
 
       <p className="text-xs text-gray-500 mb-2">
@@ -66,16 +66,13 @@ export function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
         view
       </p>
 
-      <div className="bg-white rounded-xl shadow overflow-hidden border">
+      <div className="bg-white rounded-xl shadow overflow-x-auto border">
         <table className="w-full text-left">
           <thead className="bg-gray-100 text-sm text-gray-600">
             <tr>
-              <th className="p-3">House</th>
-              <th className="p-3">Charge</th>
-              <th className="p-3">Period</th>
-              <th className="p-3">Due date</th>
-              <th className="p-3">Status</th>
-              <th className="p-3 text-right">Outstanding</th>
+              {headings.map(heading => <th key={heading} className="p-3"><label>{heading}<select aria-label={`Filter ${heading}`} className="block border rounded p-1 mt-2 max-w-48" value={columns[heading] ?? ''} onChange={e => setColumns({ ...columns, [heading]: e.target.value })}><option value="">All</option>{[...new Set(invoices.map(inv => value(inv, heading)))].sort().map(v => <option key={v} value={v}>{v}</option>)}</select></label></th>)}
+              <th className="p-3"><label>Status<select aria-label="Filter Status" className="block border rounded p-1 mt-2" value={status} onChange={e => setStatus(e.target.value)}><option value="all">All</option>{['unpaid','partial','paid','overdue'].map(s => <option key={s} value={s}>{s}</option>)}</select></label></th>
+              <th className="p-3"><label>Outstanding<select aria-label="Filter Outstanding" className="block border rounded p-1 mt-2" value={columns.Outstanding ?? ''} onChange={e => setColumns({ ...columns, Outstanding: e.target.value })}><option value="">All amounts</option><option value="positive">Has balance</option><option value="zero">Fully paid</option><option value="under5000">Under ₦5,000</option><option value="5000plus">₦5,000 or more</option></select></label></th>
             </tr>
           </thead>
           <tbody>
@@ -91,7 +88,7 @@ export function InvoicesTable({ invoices }: { invoices: Invoice[] }) {
                     <td className="p-3">{inv.due_types?.name ?? 'Estate charge'}</td>
                     <td className="p-3">{inv.period_label ?? '—'}</td>
                     <td className="p-3">
-                      {inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '—'}
+                      {inv.due_date ? new Date(inv.due_date).toLocaleDateString('en-GB', { timeZone: 'Africa/Lagos' }) : '—'}
                     </td>
                     <td className="p-3">
                       <span

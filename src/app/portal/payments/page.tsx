@@ -106,3 +106,5 @@ export default async function PaymentHistoryPage() {
     </div>
   )
 }
+
+export const metadata = {title: 'Portal Payments', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}

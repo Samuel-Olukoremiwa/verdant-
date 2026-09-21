@@ -39,3 +39,5 @@ export default async function RegistrationsPage() {
     </div>
   )
 }
+
+export const metadata = {title: 'Admin Registrations', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}

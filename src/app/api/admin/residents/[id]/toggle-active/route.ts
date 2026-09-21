@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
@@ -31,7 +32,9 @@ export async function POST(
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
   }
 
-  const { is_active } = await req.json()
+  const parsed = z.object({is_active:z.boolean()}).strict().safeParse(await req.json().catch(()=>null))
+  if(!z.uuid().safeParse(id).success || !parsed.success) return NextResponse.json({error:'Invalid resident or status'}, {status:400})
+  const {is_active}=parsed.data
 
   const service = createServiceClient()
 
@@ -51,16 +54,17 @@ export async function POST(
     .eq('id', id)
 
   if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ error: 'Could not update resident status' }, { status: 500 })
   }
 
   // If they have a portal login, ban or unban it to match.
   // Supabase's admin API uses ban_duration; '876000h' (~100 years) is the
   // conventional way to represent an indefinite ban, 'none' lifts it.
   if (resident.auth_user_id) {
-    await service.auth.admin.updateUserById(resident.auth_user_id, {
+    const {error: authError} = await service.auth.admin.updateUserById(resident.auth_user_id, {
       ban_duration: is_active ? 'none' : '876000h',
     })
+    if(authError) return NextResponse.json({error:'Resident record updated, but account sign-in status could not be synchronised. Retry this action.'},{status:502})
   }
 
   return NextResponse.json({ ok: true })

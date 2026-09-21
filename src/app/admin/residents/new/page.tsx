@@ -26,6 +26,8 @@ export default function NewResidentPage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [houses, setHouses] = useState<{ id: string; address: string }[]>([])
+  const [houseId, setHouseId] = useState('')
   const [streets, setStreets] = useState<{ id: string; name: string }[]>([])
 
   const [form, setForm] = useState({
@@ -47,6 +49,10 @@ export default function NewResidentPage() {
   })
 
   useEffect(() => {
+    supabase.from('houses').select('id, address').order('address').then(({ data, error }) => {
+      if (error) setError('Could not load existing houses. Please reload before adding a resident.')
+      else setHouses(data ?? [])
+    })
     supabase
       .from('streets')
       .select('id, name')
@@ -64,58 +70,20 @@ export default function NewResidentPage() {
     setError(null)
 
     try {
-      const street = streets.find((s) => s.id === form.street_id)
-      if (!street) throw new Error('Select a street')
-
-      const houseType =
-        form.house_type === 'Other' ? form.house_type_other.trim() : form.house_type
-
-      const address = `${form.house_number.trim()}, ${street.name}`
-
-      // 1. Create the house record
-      const { data: house, error: houseError } = await supabase
-        .from('houses')
-        .insert({
-          address,
-          house_type: houseType || null,
-          street_id: form.street_id,
-          house_number: form.house_number.trim(),
-        })
-        .select()
-        .single()
-
-      if (houseError) throw houseError
-
-      // 2. Generate a unique QR code value for this resident
-      const qrValue = `RES-${crypto.randomUUID()}`
-
-      // 3. Combine the split name fields into one full_name for storage —
-      // first name leads so greetings elsewhere (e.g. "Hi Simon") keep working.
-      const fullName = [form.first_name, form.other_names, form.surname]
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .join(' ')
-
-      const plates = form.vehicle_plate_numbers
-        .split(',')
-        .map((p) => p.trim())
-        .filter(Boolean)
-
-      const { error: residentError } = await supabase.from('residents').insert({
-        house_id: house.id,
-        full_name: fullName,
-        phone: form.phone || null,
-        email: form.email || null,
-        relationship: form.relationship,
-        vehicle_plate_numbers: plates.length > 0 ? plates : null,
-        emergency_contact_name: form.emergency_contact_name || null,
-        emergency_contact_phone: form.emergency_contact_phone || null,
-        move_in_date: form.move_in_date || null,
-        property_allocation_date: form.property_allocation_date || null,
-        qr_code_value: qrValue,
+      const street = streets.find(s => s.id === form.street_id)
+      if (!houseId && !street) throw new Error('Select a street for the new house')
+      const { error: saveError } = await supabase.rpc('add_estate_resident', {
+        p_house_id: houseId || null,
+        p_house: { street_id: form.street_id || null, house_number: form.house_number.trim(), house_type: form.house_type === 'Other' ? form.house_type_other.trim() : form.house_type },
+        p_resident: {
+          full_name: [form.first_name, form.other_names, form.surname].map(s => s.trim()).filter(Boolean).join(' '),
+          phone: form.phone.trim(), email: form.email.trim(), relationship: form.relationship,
+          vehicle_plate_numbers: form.vehicle_plate_numbers.split(',').map(s => s.trim()).filter(Boolean),
+          emergency_contact_name: form.emergency_contact_name, emergency_contact_phone: form.emergency_contact_phone,
+          move_in_date: form.move_in_date || null, property_allocation_date: form.property_allocation_date || null,
+        },
       })
-
-      if (residentError) throw residentError
+      if (saveError) throw saveError
 
       router.push('/admin/residents')
       router.refresh()
@@ -130,10 +98,18 @@ export default function NewResidentPage() {
     <div className="page-wrap max-w-3xl">
       <span className="eyebrow">Residents</span>
       <h1 className="page-title">Add a resident</h1>
-      <p className="page-lead mb-8">Create their home record and a unique access identity in one step.</p>
+      <p className="page-lead mb-8">Link them to an existing home or create a new home, with a unique gate pass.</p>
 
       <form onSubmit={handleSubmit} className="form-card space-y-5">
+        <label className="block font-medium">Household
+          <select className="w-full border rounded-lg px-3 py-2" value={houseId} onChange={e => setHouseId(e.target.value)}>
+            <option value="">Create a new house</option>
+            {houses.map(h => <option key={h.id} value={h.id}>{h.address}</option>)}
+          </select>
+        </label>
+        <p className="text-sm text-gray-600">For tenants and family members, select the owner&apos;s existing house so everyone shares the same bills.</p>
         <div className="grid grid-cols-2 gap-4">
+          {!houseId && <>
           <div>
             <label className="block text-sm font-medium mb-1">Street *</label>
             <select
@@ -198,6 +174,7 @@ export default function NewResidentPage() {
             </div>
           )}
 
+          </>}
           <div>
             <label className="block text-sm font-medium mb-1">Surname *</label>
             <input

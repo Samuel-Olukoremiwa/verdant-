@@ -1,5 +1,6 @@
 'use client'
 
+import {SiteTools} from '@/components/site-tools'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
@@ -25,6 +26,8 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [consent,setConsent]=useState(false)
+  const [website,setWebsite]=useState('')
 
   const [form, setForm] = useState({
     street_id: '',
@@ -59,7 +62,8 @@ export default function RegisterPage() {
       const houseType =
         form.house_type === 'Other' ? form.house_type_other.trim() : form.house_type
 
-      const { error } = await supabase.from('registration_requests').insert({
+      const response = await fetch('/api/registrations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        consent,website,
         surname: form.surname.trim(),
         first_name: form.first_name.trim(),
         other_names: form.other_names.trim() || null,
@@ -69,8 +73,9 @@ export default function RegisterPage() {
         house_number: form.house_number.trim(),
         house_type: houseType || null,
         relationship: form.relationship,
-      })
-      if (error) throw error
+      })})
+      const result=await response.json()
+      if (!response.ok) throw new Error(result.error || 'Could not submit registration')
       setSubmitted(true)
     } catch (err) {
       setError(friendlyDbError(err))
@@ -80,7 +85,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="login-page">
+    <main id="main-content" className="login-page"><div className="auth-tools"><SiteTools/></div>
       <section className="login-panel">
         <Link href="/" className="brand login-brand">
           <span className="brand-mark">V</span>
@@ -90,14 +95,14 @@ export default function RegisterPage() {
           </span>
         </Link>
         <span className="eyebrow">Resident registration</span>
-        <h1>Join Evergreen Estate.</h1>
+        <h1>Join your estate.</h1>
 
         {submitted ? (
           <>
             <p>
               Thanks — your registration has been submitted for review. An estate
               administrator will approve or follow up on it, and you&apos;ll receive
-              your portal login details by email once approved.
+              an email invitation to set your password and access the resident portal once approved.
             </p>
             <p className="login-help">
               <Link href="/login">← Back to sign in</Link>
@@ -227,7 +232,7 @@ export default function RegisterPage() {
                 </p>
               )}
 
-              <button className="action" disabled={loading}>
+              <label className="honeypot" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={website} onChange={e=>setWebsite(e.target.value)}/></label><p className="consent-note">Use sample details only in this demonstration. Read the <Link href="/privacy">privacy draft</Link> before submitting.</p><label className="consent-note"><input type="checkbox" required checked={consent} onChange={e=>setConsent(e.target.checked)} style={{width:18,minHeight:18,display:"inline",marginRight:8}}/>I understand this is a demonstration and confirm that I am submitting sample details.</label><button className="action" disabled={loading}>
                 {loading ? 'Submitting…' : 'Submit for review'}{' '}
                 <span aria-hidden="true">→</span>
               </button>

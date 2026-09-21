@@ -3,6 +3,10 @@
     {
       "path": "/api/reminders/send",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/generate-fixed-charges",
+      "schedule": "0 0 1 * *"
     }
   ]
 }
