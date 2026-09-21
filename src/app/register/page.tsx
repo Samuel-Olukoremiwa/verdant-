@@ -40,6 +40,8 @@ export default function RegisterPage() {
     phone: '',
     email: '',
     relationship: 'owner',
+    move_in_date: '',
+    property_allocation_date: '',
   })
 
   useEffect(() => {
@@ -73,6 +75,7 @@ export default function RegisterPage() {
         house_number: form.house_number.trim(),
         house_type: houseType || null,
         relationship: form.relationship,
+        move_in_date:form.move_in_date,property_allocation_date:form.property_allocation_date,
       })})
       const result=await response.json()
       if (!response.ok) throw new Error(result.error || 'Could not submit registration')
@@ -232,7 +235,7 @@ export default function RegisterPage() {
                 </p>
               )}
 
-              <label className="honeypot" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={website} onChange={e=>setWebsite(e.target.value)}/></label><p className="consent-note">Use sample details only in this demonstration. Read the <Link href="/privacy">privacy draft</Link> before submitting.</p><label className="consent-note"><input type="checkbox" required checked={consent} onChange={e=>setConsent(e.target.checked)} style={{width:18,minHeight:18,display:"inline",marginRight:8}}/>I understand this is a demonstration and confirm that I am submitting sample details.</label><button className="action" disabled={loading}>
+              <label>Move-in date *<input type="date" required value={form.move_in_date} onChange={e=>update('move_in_date',e.target.value)}/></label><label>Property allocation date *<input type="date" required value={form.property_allocation_date} onChange={e=>update('property_allocation_date',e.target.value)}/></label><label className="honeypot" aria-hidden="true">Website<input tabIndex={-1} autoComplete="off" value={website} onChange={e=>setWebsite(e.target.value)}/></label><p className="consent-note">Use sample details only in this demonstration. Read the <Link href="/privacy">privacy draft</Link> before submitting.</p><label className="consent-note"><input type="checkbox" required checked={consent} onChange={e=>setConsent(e.target.checked)} style={{width:18,minHeight:18,display:"inline",marginRight:8}}/>I understand this is a demonstration and confirm that I am submitting sample details.</label><button className="action" disabled={loading}>
                 {loading ? 'Submitting…' : 'Submit for review'}{' '}
                 <span aria-hidden="true">→</span>
               </button>

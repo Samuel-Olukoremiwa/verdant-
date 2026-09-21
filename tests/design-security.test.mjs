@@ -100,6 +100,8 @@ const valid = {
   house_number: "1",
   house_type: null,
   relationship: "family_member",
+  move_in_date: "2026-09-01",
+  property_allocation_date: "2026-08-01",
   consent: true,
   website: "",
 };

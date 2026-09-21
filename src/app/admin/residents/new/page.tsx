@@ -70,10 +70,12 @@ export default function NewResidentPage() {
     setError(null)
 
     try {
+      if(!form.move_in_date || !form.property_allocation_date) throw new Error('Move-in date and property allocation date are required')
       const street = streets.find(s => s.id === form.street_id)
-      if (!houseId && !street) throw new Error('Select a street for the new house')
+      if (!houseId) throw new Error('Choose an address or create a new one')
+      if (houseId === 'new' && !street) throw new Error('Select a street for the new house')
       const { error: saveError } = await supabase.rpc('add_estate_resident', {
-        p_house_id: houseId || null,
+        p_house_id: houseId === 'new' ? null : houseId,
         p_house: { street_id: form.street_id || null, house_number: form.house_number.trim(), house_type: form.house_type === 'Other' ? form.house_type_other.trim() : form.house_type },
         p_resident: {
           full_name: [form.first_name, form.other_names, form.surname].map(s => s.trim()).filter(Boolean).join(' '),
@@ -102,14 +104,15 @@ export default function NewResidentPage() {
 
       <form onSubmit={handleSubmit} className="form-card space-y-5">
         <label className="block font-medium">Household
-          <select className="w-full border rounded-lg px-3 py-2" value={houseId} onChange={e => setHouseId(e.target.value)}>
-            <option value="">Create a new house</option>
+          <select required className="w-full border rounded-lg px-3 py-2" value={houseId} onChange={e => setHouseId(e.target.value)}>
+            <option value="" disabled>Choose an address or create a new one</option>
+            <option value="new">Create a new house</option>
             {houses.map(h => <option key={h.id} value={h.id}>{h.address}</option>)}
           </select>
         </label>
         <p className="text-sm text-gray-600">For tenants and family members, select the owner&apos;s existing house so everyone shares the same bills.</p>
         <div className="grid grid-cols-2 gap-4">
-          {!houseId && <>
+          {houseId === 'new' && <>
           <div>
             <label className="block text-sm font-medium mb-1">Street *</label>
             <select
@@ -242,9 +245,10 @@ export default function NewResidentPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Move-in Date</label>
+            <label className="block text-sm font-medium mb-1">Move-in Date *</label>
             <input
               type="date"
+              required
               className="w-full border rounded-lg px-3 py-2"
               value={form.move_in_date}
               onChange={(e) => update('move_in_date', e.target.value)}
@@ -252,9 +256,10 @@ export default function NewResidentPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Property Allocation Date</label>
+            <label className="block text-sm font-medium mb-1">Property Allocation Date *</label>
             <input
               type="date"
+              required
               className="w-full border rounded-lg px-3 py-2"
               value={form.property_allocation_date}
               onChange={(e) => update('property_allocation_date', e.target.value)}

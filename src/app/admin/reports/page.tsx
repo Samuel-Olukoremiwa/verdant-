@@ -46,7 +46,7 @@ export default function ReportsPage() {
   }
 
   function exportCsv() {
-    const csv = reportCsv(type, rows)
+    const csv = reportCsv(type, rows, from, to)
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -76,7 +76,7 @@ export default function ReportsPage() {
           <span className="eyebrow">Dues &amp; billing</span>
           <h1 className="page-title">Reports</h1>
           <p className="page-lead">
-            Due, collected, overdue, upcoming bills, and expenses — filtered by date, exportable as CSV or PDF.
+            Income statements, dues and expenses, filtered by date and available as CSV or PDF.
           </p>
         </div>
         <div className="flex gap-3 flex-wrap"><button onClick={exportPdf} disabled={loading || exporting || rows.length === 0} className="action">{exporting ? 'Preparing PDF…' : 'Export PDF'}</button><button onClick={exportCsv} disabled={loading || rows.length === 0} className="action secondary">
@@ -94,6 +94,7 @@ export default function ReportsPage() {
               value={type}
               onChange={(e) => changeFilters({ type: e.target.value as ReportType })}
             >
+              <option value="income-statement">Income Statement</option>
               <option value="due">Due Bills</option>
               <option value="collected">Collected</option>
               <option value="overdue">Overdue</option>
@@ -129,6 +130,7 @@ export default function ReportsPage() {
 
       {error && <p className="text-red-600 mb-4">{error}</p>}
 
+      {type === 'income-statement' ? <section className="panel" aria-label="Income statement"><div className="panel-head"><h2>Income Statement · {from} to {to}</h2></div><p className="p-4 text-sm text-gray-500">Cash basis: successful dues payments received during this period (WAT), less expenses recorded for these dates. Street assignments reflect current house records.</p>{loading ? <p role="status" className="p-6">Loading statement…</p> : !error && <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th scope="col" className="p-3 text-left">Income / Expense</th><th scope="col" className="p-3 text-right">Amount (NGN)</th><th scope="col" className="p-3 text-right">Total (NGN)</th></tr></thead><tbody>{rows.map((r,i)=><tr key={i} className={`border-t ${r.kind==='deficit'?'text-red-700':''} ${r.kind==='street'||r.kind==='expense'?'':'font-bold'}`}><th scope="row" className={`p-3 text-left ${r.kind==='street'?'pl-8 font-normal':''}`}>{r.label}{r.kind==='expense'&&<span className="block text-xs font-normal text-gray-500">{r.date} · {r.category}</span>}</th><td className="p-3 text-right">{r.detail==null?'':naira(Number(r.detail))}</td><td className="p-3 text-right">{r.total==null?'':naira(Number(r.total))}</td></tr>)}</tbody></table></div>}</section> : <>
       <p className="text-xs text-gray-500 mb-2">
         {loading
           ? 'Loading...'
@@ -216,6 +218,7 @@ export default function ReportsPage() {
           </tbody>
         </table>
       </div>
+      </>}
     </div>
   )
 }

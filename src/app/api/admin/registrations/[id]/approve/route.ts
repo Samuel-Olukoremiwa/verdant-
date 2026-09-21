@@ -1,3 +1,4 @@
+import {z} from 'zod'
 import { dispatchSms } from '@/lib/sms-dispatch'
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'crypto'
@@ -48,6 +49,11 @@ export async function POST(
     return NextResponse.json({ error: 'This request has already been reviewed' }, { status: 400 })
   }
 
+  const input=z.object({move_in_date:z.iso.date().optional(),property_allocation_date:z.iso.date().optional()}).strict().safeParse(await req.json().catch(()=>({})))
+  if(!input.success)return NextResponse.json({error:'Enter valid move-in and property allocation dates.'},{status:400})
+  const body=input.data
+  const dates=z.object({move_in_date:z.iso.date(),property_allocation_date:z.iso.date()}).safeParse({move_in_date:body.move_in_date??reg.move_in_date,property_allocation_date:body.property_allocation_date??reg.property_allocation_date})
+  if(!dates.success)return NextResponse.json({error:'Enter valid move-in and property allocation dates before approval.'},{status:400})
   let streetName = ''
   if (reg.street_id) {
     const { data: street } = await service
@@ -89,6 +95,7 @@ export async function POST(
       phone: reg.phone,
       email: reg.email,
       relationship: reg.relationship,
+      ...dates.data,
       qr_code_value: qrValue,
     })
     .select()
@@ -119,6 +126,7 @@ export async function POST(
     .from('registration_requests')
     .update({
       status: 'approved',
+      ...dates.data,
       reviewed_by: admin.id,
       reviewed_at: new Date().toISOString(),
       created_resident_id: resident.id,

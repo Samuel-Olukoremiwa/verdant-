@@ -14,11 +14,34 @@ async function loadFont() {
   return fontCache
 }
 export async function createReportPdf(type: ReportType, rows: ReportRow[], from: string, to: string, fontData?: string) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', putOnlyUsedFonts: true })
+  const doc = new jsPDF({ orientation: type === 'income-statement' ? 'portrait' : 'landscape', unit: 'mm', format: 'a4', putOnlyUsedFonts: true })
   doc.addFileToVFS('NotoSans.ttf', fontData ?? await loadFont())
   doc.addFont('NotoSans.ttf', 'NotoSans', 'normal')
   doc.setFont('NotoSans', 'normal')
   doc.setProperties({ title: `${REPORT_LABELS[type]} - your estate`, author: 'your estate' })
+  if (type === 'income-statement') {
+    doc.setProperties({title:`Income Statement | ${from} to ${to}`,author:'Verdant'})
+    autoTable(doc, {
+      head:[['Income / Expense','Amount (NGN)','Total (NGN)']],
+      body:rows.map(r=>[String(r.label)+(r.kind==='expense'?`\n${r.date} | ${r.category}`:''),r.detail==null?'':Number(r.detail).toLocaleString('en-NG',{minimumFractionDigits:2,maximumFractionDigits:2}),r.total==null?'':Number(r.total).toLocaleString('en-NG',{minimumFractionDigits:2,maximumFractionDigits:2})]),
+      margin:{top:42,bottom:20,left:14,right:14},
+      styles:{font:'NotoSans',fontStyle:'normal',fontSize:8,cellPadding:2,overflow:'linebreak'},
+      headStyles:{fillColor:[29,73,56],fontStyle:'normal'},
+      columnStyles:{0:{cellWidth:104},1:{halign:'right',cellWidth:39},2:{halign:'right',cellWidth:39}},
+      rowPageBreak:'avoid',
+      didParseCell: data => {
+        if(data.section!=='body')return
+        const row=rows[data.row.index]
+        if(['section','subtotal','income','surplus','deficit'].includes(String(row.kind)))data.cell.styles.fillColor=[235,241,235]
+        if(row.kind==='deficit')data.cell.styles.textColor=[180,30,30]
+        if(row.kind==='street'&&data.column.index===0)data.cell.styles.cellPadding={top:2,bottom:2,left:8,right:2}
+      },
+      willDrawPage:()=>{doc.setTextColor(29,73,56);doc.setFontSize(17);doc.text('Income Statement',14,16);doc.setTextColor(40);doc.setFontSize(10);doc.text(`Verdant | ${from} to ${to}`,14,24);doc.setFontSize(8);doc.text('Cash basis: successful payments received (WAT) less dated expenses.',14,31);doc.text('Street assignments reflect current house records.',14,36)},
+    })
+    const count=doc.getNumberOfPages()
+    for(let page=1;page<=count;page++){doc.setPage(page);doc.setTextColor(90);doc.setFontSize(8);doc.text('All amounts in Nigerian naira (NGN)',14,287);doc.text(`Page ${page} of ${count}`,196,287,{align:'right'})}
+    return doc
+  }
   const columns = reportColumns(type)
   const amountKey = type === 'collected' || type === 'expenses' ? 'amount' : 'outstanding'
   const total = rows.reduce((sum,r) => sum + Number(r[amountKey] ?? 0),0)

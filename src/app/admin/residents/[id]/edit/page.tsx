@@ -134,6 +134,7 @@ export default function EditResidentPage({
     setError(null)
 
     try {
+      if(!form.move_in_date || !form.property_allocation_date) throw new Error('Move-in date and property allocation date are required')
       const street = streets.find((s) => s.id === form.street_id)
       if (!street) throw new Error('Select a street')
 
@@ -330,9 +331,10 @@ export default function EditResidentPage({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Move-in Date</label>
+            <label className="block text-sm font-medium mb-1">Move-in Date *</label>
             <input
               type="date"
+              required
               className="w-full border rounded-lg px-3 py-2"
               value={form.move_in_date}
               onChange={(e) => update('move_in_date', e.target.value)}
@@ -340,9 +342,10 @@ export default function EditResidentPage({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Property Allocation Date</label>
+            <label className="block text-sm font-medium mb-1">Property Allocation Date *</label>
             <input
               type="date"
+              required
               className="w-full border rounded-lg px-3 py-2"
               value={form.property_allocation_date}
               onChange={(e) => update('property_allocation_date', e.target.value)}

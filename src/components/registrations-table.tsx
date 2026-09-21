@@ -13,6 +13,8 @@ type Request = {
   house_type: string | null
   relationship: string
   status: string
+  move_in_date?: string | null
+  property_allocation_date?: string | null
   decline_reason: string | null
   created_at: string
   streets: { name: string } | null
@@ -34,6 +36,8 @@ function CopyLinkButton() {
 }
 
 function RequestRow({ req }: { req: Request }) {
+  const [moveIn,setMoveIn]=useState(req.move_in_date||'')
+  const [allocation,setAllocation]=useState(req.property_allocation_date||'')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [credentials, setCredentials] = useState<{ email: string; sms?: { message: string } } | null>(null)
@@ -48,11 +52,13 @@ function RequestRow({ req }: { req: Request }) {
   const fullName = [req.first_name, req.other_names, req.surname].filter(Boolean).join(' ')
 
   async function approve() {
+    if(!moveIn||!allocation){setError('Enter both required dates before approving.');return}
     setLoading(true)
     setError(null)
     try {
       const res = await fetch(`/api/admin/registrations/${req.id}/approve`, {
         method: 'POST',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({move_in_date:moveIn,property_allocation_date:allocation}),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Could not approve')
@@ -111,7 +117,7 @@ function RequestRow({ req }: { req: Request }) {
       </div>
 
       {localStatus === 'pending' && (
-        <div className="mt-3">
+        <div className="mt-3"><div className="flex flex-wrap gap-3 mb-3"><label>Move-in date *<input type="date" required className="block border rounded-lg p-2" value={moveIn} onChange={e=>setMoveIn(e.target.value)}/></label><label>Property allocation date *<input type="date" required className="block border rounded-lg p-2" value={allocation} onChange={e=>setAllocation(e.target.value)}/></label></div>
           {!declining ? (
             <div className="flex gap-2">
               <button onClick={approve} disabled={loading} className="action">

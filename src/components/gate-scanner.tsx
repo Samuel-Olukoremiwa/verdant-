@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
 
 type ResultState = {
   type: 'success' | 'error' | 'inactive'
@@ -17,7 +16,6 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
   const lastScanRef = useRef<{ value: string; at: number } | null>(null) // prevents re-logging the same held-up QR code repeatedly
   const SCAN_COOLDOWN_MS = 8000
   const directionRef = useRef(direction) // scanner callback is registered once on mount, so it must read fresh direction via ref, not closed-over state
-  const supabase = createClient()
 
   useEffect(() => {
     directionRef.current = direction
@@ -38,43 +36,13 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
     setResult(null)
 
     try {
-      const { data: resident, error: lookupError } = await supabase
-        .from('residents')
-        .select('id, full_name, is_active')
-        .eq('qr_code_value', value)
-        .maybeSingle()
-
-      if (lookupError || !resident) {
-        setResult({ type: 'error', message: 'QR code not recognized.' })
-        return
-      }
-
-      if (!resident.is_active) {
-        setResult({
-          type: 'inactive',
-          message: `${resident.full_name} — access is inactive. Entry denied.`,
-        })
-        return
-      }
-
-      const { error: insertError } = await supabase.from('access_logs').insert({
-        resident_id: resident.id,
-        direction: directionRef.current,
-        scanned_by: scannedByLabel,
-      })
-
-      if (insertError) {
-        setResult({ type: 'error', message: insertError.message })
-        return
-      }
-
-      setResult({
-        type: 'success',
-        message: `${resident.full_name} — ${
-          directionRef.current === 'entry' ? 'entry' : 'exit'
-        } logged.`,
-      })
+      const response = await fetch('/api/gate/resident', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:value,direction:directionRef.current})})
+      const data=await response.json()
+      if(!response.ok)throw new Error(data.error||'Unable to record scan')
+      setResult({type:'success',message:`${data.name} — ${data.direction} logged.`})
       lastScanRef.current = { value, at: Date.now() }
+    } catch(error) {
+      setResult({type:'error',message:error instanceof Error?error.message:'Unable to connect. Please try again.'})
     } finally {
       setProcessing(false)
       // small cooldown so the same badge isn't logged twice in one breath
@@ -105,7 +73,6 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
       mounted = false
       scannerRef.current?.clear().catch(() => {})
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
 
@@ -134,7 +101,7 @@ export function GateScanner({ scannedByLabel }: { scannedByLabel: string }) {
         </button>
       </div>
 
-      <div id="qr-reader" />
+      <p className="text-sm text-gray-500 mb-3">Scanning as {scannedByLabel}</p><div id="qr-reader" />
 
       {processing && (
         <p className="text-sm text-gray-500 mt-3">Checking QR code...</p>

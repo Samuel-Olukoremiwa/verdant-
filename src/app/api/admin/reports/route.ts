@@ -1,3 +1,4 @@
+import {incomeStatementRows, type StatementPayment, type StatementExpense} from '@/lib/income-statement'
 import { readAll } from '@/lib/read-all'
 import { estateDate } from '@/lib/dashboard'
 import { NextRequest, NextResponse } from 'next/server'
@@ -27,12 +28,26 @@ export async function GET(req: NextRequest) {
   const type = req.nextUrl.searchParams.get('type') ?? 'due'
   const from = req.nextUrl.searchParams.get('from')
   const to = req.nextUrl.searchParams.get('to')
-  if (!['due', 'collected', 'overdue', 'future', 'expenses'].includes(type) || (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) || (from && to && from > to)) return NextResponse.json({ error: 'Choose a valid report and date range' }, { status: 400 })
+  if (!['due', 'collected', 'overdue', 'future', 'expenses', 'income-statement'].includes(type) || (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) || (from && to && from > to)) return NextResponse.json({ error: 'Choose a valid report and date range' }, { status: 400 })
   const validDate = (value: string) => Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value
   if ((from && !validDate(from)) || (to && !validDate(to))) return NextResponse.json({ error: 'Choose valid calendar dates' }, { status: 400 })
   if (from && to && Date.parse(to)-Date.parse(from) > 3660*86400000) return NextResponse.json({ error: 'Choose a date range of ten years or less' }, { status: 400 })
   const today = estateDate()
   try {
+
+  if (type === 'income-statement') {
+    if (!from || !to) return NextResponse.json({error:'Choose both statement dates'}, {status:400})
+    const next = new Date(to); next.setUTCDate(next.getUTCDate()+1)
+    const [payments, expenses] = await Promise.all([
+      readAll((start,end)=>supabase.from('payments')
+        .select('id,amount,invoices(due_type_id,due_types(name),houses(street_id,streets(name)))')
+        .eq('status','success').gte('paid_at',`${from}T00:00:00+01:00`)
+        .lt('paid_at',`${next.toISOString().slice(0,10)}T00:00:00+01:00`).order('id').range(start,end)),
+      readAll((start,end)=>supabase.from('expenses').select('id,amount,description,category,expense_date')
+        .gte('expense_date',from).lte('expense_date',to).order('expense_date').order('id').range(start,end)),
+    ])
+    return NextResponse.json({rows:incomeStatementRows(payments as unknown as StatementPayment[],expenses as StatementExpense[])})
+  }
 
   if (type === 'expenses') {
     let query = supabase

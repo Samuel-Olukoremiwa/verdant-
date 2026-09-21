@@ -7,7 +7,7 @@ export default async function RegistrationsPage() {
   const { data: rawRequests } = await supabase
     .from('registration_requests')
     .select(
-      'id, surname, first_name, other_names, phone, email, house_number, house_type, relationship, status, decline_reason, created_at, streets ( name )'
+      'id, surname, first_name, other_names, phone, email, house_number, house_type, relationship, status, decline_reason, move_in_date, property_allocation_date, created_at, streets ( name )'
     )
     .order('created_at', { ascending: false })
 
@@ -21,6 +21,8 @@ export default async function RegistrationsPage() {
     house_number: string
     house_type: string | null
     relationship: string
+    move_in_date: string | null
+    property_allocation_date: string | null
     status: string
     decline_reason: string | null
     created_at: string

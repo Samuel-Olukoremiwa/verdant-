@@ -16,6 +16,8 @@ const schema = z
     house_number: z.string().trim().min(1).max(40),
     house_type: z.string().trim().max(80).nullable(),
     relationship: z.enum(["owner", "tenant", "family_member"]),
+    move_in_date: z.iso.date(),
+    property_allocation_date: z.iso.date(),
     consent: z.literal(true),
     website: z.string().max(0),
   })

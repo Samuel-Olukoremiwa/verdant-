@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 export function AdminNav({ isSuperAdmin }: { isSuperAdmin: boolean }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  const [alertCount,setAlertCount]=useState(0)
   const [pendingCount, setPendingCount] = useState(0)
 
   const navigation: [string, string, Icon][] = [
@@ -32,6 +33,14 @@ export function AdminNav({ isSuperAdmin }: { isSuperAdmin: boolean }) {
       .eq('status', 'pending')
       .then(({ count }) => setPendingCount(count ?? 0))
   }, [])
+
+  useEffect(()=>{
+    let alive=true
+    const db=createClient()
+    const refresh=()=>{db.from('gate_due_alerts').select('id',{count:'exact',head:true}).gte('created_at',new Date(Date.now()-86400000).toISOString()).then(({count})=>{if(alive)setAlertCount(count??0)})}
+    refresh();const timer=setInterval(refresh,30000)
+    return ()=>{alive=false;clearInterval(timer)}
+  },[])
 
   return (
     <>
@@ -61,6 +70,7 @@ export function AdminNav({ isSuperAdmin }: { isSuperAdmin: boolean }) {
                 <IconComponent size={20}/>
               </span>
               {label}
+              {href === '/admin/access-logs' && alertCount>0 && <span className="pill" title="Unpaid-dues entries in the last 24 hours">{alertCount}</span>}
               {label === 'Registrations' && pendingCount > 0 && (
                 <span
                   style={{
