@@ -17,7 +17,7 @@ const HOUSE_TYPES = [
   '3-bedroom flat',
   '2-bedroom bungalow',
   '3-bedroom bungalow',
-  '4 Bedroom Bungalow',
+  '4-bedroom bungalow',
   '3-bedroom duplex',
   '4-bedroom duplex',
   '5-bedroom detached',
@@ -337,7 +337,9 @@ export default function RegisterPage() {
           Resident registration
         </span>
 
-        <h1>Join your estate.</h1>
+        <h1>
+          Join your estate.
+        </h1>
 
         {submitted ? (
           <>
@@ -562,7 +564,9 @@ export default function RegisterPage() {
 
                 <input
                   required
-                  value={form.surname}
+                  value={
+                    form.surname
+                  }
                   onChange={(event) =>
                     update(
                       'surname',
@@ -843,6 +847,7 @@ export default function RegisterPage() {
                 {loading
                   ? 'Submitting…'
                   : 'Submit for review'}{' '}
+
                 <span aria-hidden="true">
                   →
                 </span>

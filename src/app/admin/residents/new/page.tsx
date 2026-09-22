@@ -17,7 +17,7 @@ const HOUSE_TYPES = [
   '3-bedroom flat',
   '2-bedroom bungalow',
   '3-bedroom bungalow',
-  '4 Bedroom Bungalow',
+  '4-Bedroom Bungalow',
   '3-bedroom duplex',
   '4-bedroom duplex',
   '5-bedroom detached',
