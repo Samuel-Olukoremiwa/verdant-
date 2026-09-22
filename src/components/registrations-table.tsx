@@ -9,42 +9,58 @@ type Request = {
   id: string
   surname: string
   first_name: string
+
   other_names:
     | string
     | null
+
   phone: string
   email: string
+
   house_number: string
+
   block_number:
     | string
     | null
+
   flat_number:
     | string
     | null
+
   house_type:
     | string
     | null
+
   relationship: string
+
   vehicle_plate_numbers:
     | string[]
     | null
+
   emergency_contact_name:
     | string
     | null
+
   emergency_contact_phone:
     | string
     | null
+
   status: string
+
   move_in_date?:
     | string
     | null
+
   property_allocation_date?:
     | string
     | null
+
   decline_reason:
     | string
     | null
+
   created_at: string
+
   streets:
     | {
         name: string
@@ -53,8 +69,10 @@ type Request = {
 }
 
 function CopyLinkButton() {
-  const [copied, setCopied] =
-    useState(false)
+  const [
+    copied,
+    setCopied,
+  ] = useState(false)
 
   async function handleCopy() {
     const url =
@@ -67,13 +85,16 @@ function CopyLinkButton() {
     setCopied(true)
 
     setTimeout(
-      () => setCopied(false),
+      () => {
+        setCopied(false)
+      },
       2000
     )
   }
 
   return (
     <button
+      type="button"
       onClick={handleCopy}
       className="action secondary"
     >
@@ -117,56 +138,62 @@ function RequestRow({
 }: {
   req: Request
 }) {
-  const [moveIn, setMoveIn] =
-    useState(
-      req.move_in_date ??
-        ''
-    )
+  const [
+    moveIn,
+    setMoveIn,
+  ] = useState(
+    req.move_in_date ??
+      ''
+  )
 
   const [
     allocation,
     setAllocation,
-  ] =
-    useState(
-      req
-        .property_allocation_date ??
-        ''
-    )
+  ] = useState(
+    req
+      .property_allocation_date ??
+      ''
+  )
 
-  const [loading, setLoading] =
-    useState(false)
+  const [
+    loading,
+    setLoading,
+  ] = useState(false)
 
-  const [error, setError] =
-    useState<string | null>(
-      null
-    )
+  const [
+    error,
+    setError,
+  ] = useState<
+    string | null
+  >(null)
 
   const [
     credentials,
     setCredentials,
-  ] =
-    useState<{
-      email: string
+  ] = useState<{
+    email: string
 
-      sms?: {
-        message: string
-      }
-    } | null>(null)
+    sms?: {
+      message: string
+    }
+  } | null>(null)
 
   const [
     declining,
     setDeclining,
-  ] =
-    useState(false)
+  ] = useState(false)
 
-  const [reason, setReason] =
-    useState('')
+  const [
+    reason,
+    setReason,
+  ] = useState('')
 
   const [
     localStatus,
     setLocalStatus,
-  ] =
-    useState(req.status)
+  ] = useState(
+    req.status
+  )
 
   const fullName =
     [
@@ -206,7 +233,8 @@ function RequestRow({
         await fetch(
           `/api/admin/registrations/${req.id}/approve`,
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
@@ -230,11 +258,13 @@ function RequestRow({
       if (!response.ok) {
         throw new Error(
           data.error ??
-            'Could not approve'
+            'Could not approve registration'
         )
       }
 
-      setCredentials(data)
+      setCredentials(
+        data
+      )
 
       setLocalStatus(
         'approved'
@@ -251,6 +281,19 @@ function RequestRow({
   }
 
   async function decline() {
+    const cleanedReason =
+      reason.trim()
+
+    if (
+      cleanedReason.length <
+      3
+    ) {
+      setError(
+        'Enter a reason for declining this registration.'
+      )
+      return
+    }
+
     setLoading(true)
     setError(null)
 
@@ -259,7 +302,8 @@ function RequestRow({
         await fetch(
           `/api/admin/registrations/${req.id}/decline`,
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
@@ -269,7 +313,7 @@ function RequestRow({
             body:
               JSON.stringify({
                 reason:
-                  reason || null,
+                  cleanedReason,
               }),
           }
         )
@@ -280,12 +324,20 @@ function RequestRow({
       if (!response.ok) {
         throw new Error(
           data.error ??
-            'Could not decline'
+            'Could not decline registration'
         )
       }
 
+      setReason(
+        cleanedReason
+      )
+
       setLocalStatus(
         'declined'
+      )
+
+      setDeclining(
+        false
       )
     } catch (caughtError) {
       setError(
@@ -298,14 +350,23 @@ function RequestRow({
     }
   }
 
+  function cancelDecline() {
+    setDeclining(false)
+    setReason('')
+    setError(null)
+  }
+
   const statusLabel =
     req.relationship ===
     'owner'
       ? 'Home Owner'
       : req.relationship ===
-        'family_member'
+          'family_member'
         ? 'Family Member'
-        : 'Tenant'
+        : req.relationship ===
+            'tenant'
+          ? 'Tenant'
+          : req.relationship
 
   return (
     <div className="border-t p-4 text-sm">
@@ -394,7 +455,8 @@ function RequestRow({
                 value={moveIn}
                 onChange={(event) =>
                   setMoveIn(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
               />
@@ -412,7 +474,8 @@ function RequestRow({
                 }
                 onChange={(event) =>
                   setAllocation(
-                    event.target.value
+                    event.target
+                      .value
                   )
                 }
               />
@@ -420,9 +483,12 @@ function RequestRow({
           </div>
 
           {!declining ? (
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
-                onClick={approve}
+                type="button"
+                onClick={
+                  approve
+                }
                 disabled={
                   loading
                 }
@@ -434,11 +500,16 @@ function RequestRow({
               </button>
 
               <button
-                onClick={() =>
+                type="button"
+                onClick={() => {
                   setDeclining(
                     true
                   )
-                }
+
+                  setError(
+                    null
+                  )
+                }}
                 disabled={
                   loading
                 }
@@ -448,71 +519,130 @@ function RequestRow({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 flex-wrap">
-              <input
-                type="text"
-                placeholder="Optional reason"
-                value={reason}
-                onChange={(event) =>
-                  setReason(
-                    event.target.value
-                  )
-                }
-                className="border rounded-lg px-3 py-2 text-sm"
-                style={{
-                  minWidth:
-                    '14rem',
-                }}
-              />
+            <div
+              className="mt-3"
+              style={{
+                maxWidth:
+                  '32rem',
+              }}
+            >
+              <label className="block">
+                <span className="block text-sm font-medium mb-1">
+                  Reason for decline *
+                </span>
 
-              <button
-                onClick={
-                  decline
-                }
-                disabled={
-                  loading
-                }
-                className="action danger"
-              >
-                {loading
-                  ? 'Declining...'
-                  : 'Confirm decline'}
-              </button>
+                <textarea
+                  required
+                  minLength={3}
+                  maxLength={500}
+                  rows={4}
+                  placeholder="Enter the reason this registration is being declined"
+                  value={reason}
+                  onChange={(
+                    event
+                  ) => {
+                    setReason(
+                      event.target
+                        .value
+                    )
 
-              <button
-                type="button"
-                onClick={() =>
-                  setDeclining(
-                    false
-                  )
-                }
-                className="action secondary"
-              >
-                Cancel
-              </button>
+                    if (
+                      error
+                    ) {
+                      setError(
+                        null
+                      )
+                    }
+                  }}
+                  className="border rounded-lg px-3 py-2 text-sm w-full"
+                />
+
+                <span className="block text-xs text-gray-500 mt-1">
+                  Required. Minimum
+                  3 characters,
+                  maximum 500.
+                </span>
+              </label>
+
+              <div className="flex items-center gap-2 flex-wrap mt-3">
+                <button
+                  type="button"
+                  onClick={
+                    decline
+                  }
+                  disabled={
+                    loading ||
+                    reason
+                      .trim()
+                      .length <
+                      3
+                  }
+                  className="action danger"
+                >
+                  {loading
+                    ? 'Declining...'
+                    : 'Confirm decline'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    cancelDecline
+                  }
+                  disabled={
+                    loading
+                  }
+                  className="action secondary"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>
       )}
 
       {localStatus ===
-        'declined' &&
-        (
-          req.decline_reason ||
-          reason
-        ) && (
-        <p
-          className="text-xs mt-2"
+        'declined' && (
+        <div
+          className="mt-3"
           style={{
-            color:
-              '#a63e30',
+            border:
+              '1px solid #efd0ca',
+
+            background:
+              '#fff7f5',
+
+            borderRadius:
+              '.6rem',
+
+            padding:
+              '.75rem',
           }}
         >
-          Reason:{' '}
-          {req
-            .decline_reason ||
-            reason}
-        </p>
+          <p
+            className="text-xs font-semibold"
+            style={{
+              color:
+                '#a63e30',
+            }}
+          >
+            Decline reason
+          </p>
+
+          <p
+            className="text-sm mt-1"
+            style={{
+              color:
+                '#7c3127',
+            }}
+          >
+            {req
+              .decline_reason ||
+              reason ||
+              'No reason recorded'}
+          </p>
+        </div>
       )}
 
       {credentials && (
@@ -542,16 +672,31 @@ function RequestRow({
             Approved — an
             invite email was
             sent to{' '}
-            {fullName}:
+            {fullName}.
           </p>
 
           <p>
             Email:{' '}
+
             <span className="font-mono">
               {
                 credentials.email
               }
             </span>
+          </p>
+
+          <p
+            className="text-xs mt-2"
+            style={{
+              color:
+                '#276d4b',
+            }}
+          >
+            The resident can
+            use the invitation
+            to set their
+            password and
+            access the portal.
           </p>
         </div>
       )}
@@ -571,7 +716,7 @@ function RequestRow({
       {error && (
         <p
           role="alert"
-          className="text-xs mt-2"
+          className="text-xs mt-3"
           style={{
             color:
               '#a63e30',
