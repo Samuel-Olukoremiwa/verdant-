@@ -9,26 +9,49 @@ export type GateDueDetails = {
 
   name: string
 
-  host?: string | null
+  visitor_phone?:
+    | string
+    | null
+
+  host?:
+    | string
+    | null
+
+  host_email?:
+    | string
+    | null
+
+  host_phone?:
+    | string
+    | null
 
   billing_contact_name?:
     | string
     | null
 
-  email: string | null
+  email:
+    | string
+    | null
 
-  phone: string | null
+  phone:
+    | string
+    | null
 
-  address: string
+  address:
+    string
 
-  entered_at: string
+  entered_at:
+    string
 
-  balance: number
+  balance:
+    number
 
   bills: {
     label: string
     amount: number
-    due_date: string | null
+    due_date:
+      | string
+      | null
   }[]
 }
 
@@ -63,40 +86,35 @@ export function gateDueMessage(
     details.source_type ===
     'visitor'
 
-  const billingName =
-    details
-      .billing_contact_name ||
-    'Resident'
-
   let intro: string
 
-  if (audience === 'admin') {
+  if (
+    audience ===
+    'admin'
+  ) {
     if (isVisitor) {
       intro =
         `Visitor ${details.name} entered the estate at ${when}.\n` +
+        `Visitor phone: ${details.visitor_phone || 'Not provided'}\n` +
         `Host: ${details.host || 'Unknown'}\n` +
         `Address: ${details.address}\n` +
-        `Billing contact: ${details.billing_contact_name || 'Not assigned'}\n` +
-        `Billing email: ${details.email || 'Not provided'}\n` +
-        `Billing phone: ${details.phone || 'Not provided'}`
+        `Designated billing contact: ${details.billing_contact_name || 'Not assigned'}`
     } else {
       intro =
         `${details.name} entered the estate at ${when}.\n` +
         `Address: ${details.address}\n` +
-        `Billing contact: ${details.billing_contact_name || 'Not assigned'}\n` +
-        `Billing email: ${details.email || 'Not provided'}\n` +
-        `Billing phone: ${details.phone || 'Not provided'}`
+        `Designated billing contact: ${details.billing_contact_name || 'Not assigned'}`
     }
-  } else if (isVisitor) {
+  } else if (
+    isVisitor
+  ) {
     intro =
-      `Hello ${billingName}, a visitor named ${details.name} ` +
-      `for ${details.host || 'your household'} was admitted ` +
-      `to ${details.address} at ${when}.`
+      `A visitor named ${details.name} for ${details.host || 'your household'} ` +
+      `was admitted to ${details.address} at ${when}.`
   } else {
     intro =
-      `Hello ${billingName}, ${details.name} entered ` +
-      `the estate for the household at ${details.address} ` +
-      `at ${when}.`
+      `${details.name} entered the estate for the household at ` +
+      `${details.address} at ${when}.`
   }
 
   const billLines =
@@ -116,15 +134,17 @@ export function gateDueMessage(
   const action =
     audience === 'admin'
       ? 'Please review the household account in Verdant.'
-      : 'You are receiving this message because you are the current household billing contact. Please sign in to Verdant to review and settle the outstanding dues.'
+      : details
+          .billing_contact_name
+        ? `The designated payee for this household is ${details.billing_contact_name}. Please review or coordinate settlement of the household dues in Verdant.`
+        : 'Please review the household dues in Verdant.'
 
   return (
     `${intro}\n\n` +
-    `The household at ${details.address} had NGN ${balance} in unpaid dues at entry. ` +
-    `This is a household balance, not a statement of personal liability.\n\n` +
+    `The household had NGN ${balance} in unpaid dues at entry. ` +
+    `This is a household balance and does not mean the visitor was denied access.\n\n` +
     `${billLines}\n\n` +
-    `${action} Payments made since entry may have changed the balance. ` +
-    `Gate entry was not restricted because of these dues.`
+    `${action} Payments made since entry may have changed the balance.`
   )
 }
 
@@ -136,32 +156,35 @@ function subjectFor(
     details.source_type ===
     'visitor'
 
-  if (audience === 'admin') {
+  if (
+    audience ===
+    'admin'
+  ) {
     return isVisitor
       ? 'Visitor entry: household with unpaid dues'
       : 'Gate entry: household with unpaid dues'
   }
 
   return isVisitor
-    ? 'Household dues alert after visitor entry'
+    ? 'Visitor entry and household dues alert'
     : 'Your household dues reminder'
 }
 
 export async function sendGateDueEmails() {
   const apiKey =
-    process.env.RESEND_API_KEY
+    process.env
+      .RESEND_API_KEY
 
   const from =
-    process.env.RESEND_FROM_EMAIL
+    process.env
+      .RESEND_FROM_EMAIL
 
-  // Leave jobs pending when configuration
-  // is missing. Do not falsely record them
-  // as delivered.
   if (!apiKey || !from) {
     return {
       sent: 0,
       failed: 0,
-      configured: false,
+      configured:
+        false,
     }
   }
 
@@ -169,23 +192,26 @@ export async function sendGateDueEmails() {
     createServiceClient()
 
   const deadline =
-    Date.now() + 40000
+    Date.now() +
+    40000
 
   let sent = 0
   let failed = 0
 
   while (
-    Date.now() < deadline
+    Date.now() <
+    deadline
   ) {
     const {
       data: jobs,
       error,
-    } = await db.rpc(
-      'claim_gate_due_emails',
-      {
-        p_alert: null,
-      }
-    )
+    } =
+      await db.rpc(
+        'claim_gate_due_emails',
+        {
+          p_alert: null,
+        }
+      )
 
     if (error) {
       throw new Error(
@@ -202,15 +228,21 @@ export async function sendGateDueEmails() {
 
     const {
       data: alert,
-      error: readError,
-    } = await db
-      .from('gate_due_alerts')
-      .select('details')
-      .eq(
-        'id',
-        job.alert_id
-      )
-      .single()
+      error:
+        readError,
+    } =
+      await db
+        .from(
+          'gate_due_alerts'
+        )
+        .select(
+          'details'
+        )
+        .eq(
+          'id',
+          job.alert_id
+        )
+        .single()
 
     if (
       readError ||
@@ -224,14 +256,16 @@ export async function sendGateDueEmails() {
     const details =
       alert.details as GateDueDetails
 
-    let accepted = false
+    let accepted =
+      false
 
     try {
       const response =
         await fetch(
           'https://api.resend.com/emails',
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               Authorization:
@@ -244,25 +278,26 @@ export async function sendGateDueEmails() {
                 `gate-dues-${job.id}`,
             },
 
-            body: JSON.stringify({
-              from,
+            body:
+              JSON.stringify({
+                from,
 
-              to: [
-                job.recipient,
-              ],
+                to: [
+                  job.recipient,
+                ],
 
-              subject:
-                subjectFor(
-                  details,
-                  job.audience
-                ),
+                subject:
+                  subjectFor(
+                    details,
+                    job.audience
+                  ),
 
-              text:
-                gateDueMessage(
-                  details,
-                  job.audience
-                ),
-            }),
+                text:
+                  gateDueMessage(
+                    details,
+                    job.audience
+                  ),
+              }),
 
             signal:
               AbortSignal.timeout(
@@ -272,52 +307,58 @@ export async function sendGateDueEmails() {
         )
 
       const body =
-        await response.json()
+        await response
+          .json()
 
       accepted =
         response.ok &&
         typeof body.id ===
           'string'
     } catch {
-      // Retried using the same provider
-      // idempotency key.
+      // Keep for retry.
     }
 
     const {
-      error: updateError,
-    } = await db
-      .from('gate_due_emails')
-      .update(
-        accepted
-          ? {
-              status:
-                'sent',
+      error:
+        updateError,
+    } =
+      await db
+        .from(
+          'gate_due_emails'
+        )
+        .update(
+          accepted
+            ? {
+                status:
+                  'sent',
 
-              sent_at:
-                new Date()
-                  .toISOString(),
-            }
-          : {
-              status:
-                'pending',
+                sent_at:
+                  new Date()
+                    .toISOString(),
+              }
+            : {
+                status:
+                  'pending',
 
-              available_at:
-                new Date(
-                  Date.now() +
-                    60000
-                ).toISOString(),
-            }
-      )
-      .eq(
-        'id',
-        job.id
-      )
-      .eq(
-        'attempts',
-        job.attempts
-      )
+                available_at:
+                  new Date(
+                    Date.now() +
+                      60000
+                  ).toISOString(),
+              }
+        )
+        .eq(
+          'id',
+          job.id
+        )
+        .eq(
+          'attempts',
+          job.attempts
+        )
 
-    if (updateError) {
+    if (
+      updateError
+    ) {
       throw new Error(
         'Unable to record gate reminder status'
       )

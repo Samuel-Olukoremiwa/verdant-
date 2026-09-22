@@ -5,12 +5,17 @@ import { useRouter } from 'next/navigation'
 
 type VisitorResult = {
   visitor: string
+  visitor_phone:
+    | string
+    | null
   host: string
   address: string
   message: string
-  has_outstanding: boolean
+  has_outstanding:
+    boolean
   balance: number
-  alert_queued: boolean
+  alert_queued:
+    boolean
 }
 
 function naira(
@@ -28,32 +33,29 @@ function naira(
 }
 
 export function VisitorGate() {
-  const router = useRouter()
+  const router =
+    useRouter()
 
-  const [
-    code,
-    setCode,
-  ] = useState('')
+  const [code, setCode] =
+    useState('')
 
-  const [
-    busy,
-    setBusy,
-  ] = useState(false)
+  const [busy, setBusy] =
+    useState(false)
 
-  const [
-    error,
-    setError,
-  ] = useState('')
+  const [error, setError] =
+    useState('')
 
   const [
     result,
     setResult,
-  ] = useState<
-    VisitorResult | null
-  >(null)
+  ] =
+    useState<
+      VisitorResult | null
+    >(null)
 
   async function submit(
-    event: React.FormEvent
+    event:
+      React.FormEvent
   ) {
     event.preventDefault()
 
@@ -66,17 +68,19 @@ export function VisitorGate() {
         await fetch(
           '/api/gate/visitors',
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
             },
 
-            body: JSON.stringify({
-              code:
-                code.trim(),
-            }),
+            body:
+              JSON.stringify({
+                code:
+                  code.trim(),
+              }),
           }
         )
 
@@ -115,8 +119,9 @@ export function VisitorGate() {
       </h2>
 
       <p className="mb-3 text-sm">
-        Verify the invitation and record
-        entry. A valid code is used
+        Verify the invitation
+        and record entry. A
+        valid code is used
         immediately.
       </p>
 
@@ -137,6 +142,7 @@ export function VisitorGate() {
             setCode(
               event.target.value
             )
+
             setResult(null)
             setError('')
           }}
@@ -168,15 +174,27 @@ export function VisitorGate() {
             className="rounded-lg bg-green-50 border border-green-200 p-4"
           >
             <strong className="text-green-800">
-              Entry approved: {result.visitor}
+              Entry approved:{' '}
+              {result.visitor}
             </strong>
 
+            {result.visitor_phone && (
+              <p className="mt-1">
+                Visitor phone:{' '}
+                {
+                  result.visitor_phone
+                }
+              </p>
+            )}
+
             <p className="mt-1">
-              Host: {result.host}
+              Host:{' '}
+              {result.host}
             </p>
 
             <p>
-              Address: {result.address}
+              Address:{' '}
+              {result.address}
             </p>
 
             <p className="text-sm mt-1">
@@ -189,41 +207,32 @@ export function VisitorGate() {
               role="alert"
               className="rounded-lg border-2 border-amber-500 bg-amber-50 p-4"
             >
-              <div className="flex items-start gap-2">
-                <span
-                  aria-hidden="true"
-                  className="text-xl"
-                >
-                  ⚠
-                </span>
+              <strong className="block text-amber-900">
+                ⚠ Household has
+                outstanding bills
+              </strong>
 
-                <div>
-                  <strong className="block text-amber-900">
-                    Household has outstanding bills
-                  </strong>
+              <p className="mt-1 text-amber-900">
+                Current balance:{' '}
+                <strong>
+                  {naira(
+                    result.balance
+                  )}
+                </strong>
+              </p>
 
-                  <p className="mt-1 text-amber-900">
-                    Current recorded household balance:{' '}
-                    <strong>
-                      {naira(
-                        result.balance
-                      )}
-                    </strong>
-                  </p>
+              <p className="mt-2 text-sm text-amber-800">
+                Visitor entry remains
+                approved. Outstanding
+                dues do not block
+                access.
+              </p>
 
-                  <p className="mt-2 text-sm text-amber-800">
-                    Visitor entry remains approved.
-                    The unpaid balance does not block
-                    entry.
-                  </p>
-
-                  <p className="mt-1 text-sm text-amber-800">
-                    {result.alert_queued
-                      ? 'A billing alert has been queued for the household billing contact and estate administration.'
-                      : 'No billing alert was required.'}
-                  </p>
-                </div>
-              </div>
+              <p className="mt-1 text-sm text-amber-800">
+                {result.alert_queued
+                  ? 'The host resident, designated payee where different, and estate administration have been queued for notification.'
+                  : 'No billing alert was required.'}
+              </p>
             </div>
           )}
         </div>

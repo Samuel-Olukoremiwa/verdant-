@@ -19,9 +19,12 @@ export function BillingResponsibilityCard({
   currentResponsibleId,
 }: {
   houseId: string
-  currentResponsibleId: string | null
+  currentResponsibleId:
+    | string
+    | null
 }) {
-  const router = useRouter()
+  const router =
+    useRouter()
 
   const supabase =
     useMemo(
@@ -32,34 +35,43 @@ export function BillingResponsibilityCard({
   const [
     residents,
     setResidents,
-  ] = useState<
-    HouseResident[]
-  >([])
+  ] =
+    useState<
+      HouseResident[]
+    >([])
 
   const [
     selected,
     setSelected,
-  ] = useState(
-    currentResponsibleId ?? ''
-  )
+  ] =
+    useState(
+      currentResponsibleId ??
+        ''
+    )
+
+  const [
+    savedResponsibleId,
+    setSavedResponsibleId,
+  ] =
+    useState<
+      string | null
+    >(
+      currentResponsibleId
+    )
 
   const [
     loading,
     setLoading,
-  ] = useState(false)
+  ] =
+    useState(false)
 
   const [
     error,
     setError,
-  ] = useState<
-    string | null
-  >(null)
-
-  useEffect(() => {
-    setSelected(
-      currentResponsibleId ?? ''
-    )
-  }, [currentResponsibleId])
+  ] =
+    useState<
+      string | null
+    >(null)
 
   useEffect(() => {
     let active = true
@@ -68,27 +80,33 @@ export function BillingResponsibilityCard({
       const {
         data,
         error,
-      } = await supabase
-        .from('residents')
-        .select(
-          'id, full_name, relationship'
-        )
-        .eq(
-          'house_id',
-          houseId
-        )
-        .eq(
-          'is_active',
-          true
-        )
-        .order(
-          'full_name',
-          {
-            ascending: true,
-          }
-        )
+      } =
+        await supabase
+          .from(
+            'residents'
+          )
+          .select(
+            'id, full_name, relationship'
+          )
+          .eq(
+            'house_id',
+            houseId
+          )
+          .eq(
+            'is_active',
+            true
+          )
+          .order(
+            'full_name',
+            {
+              ascending:
+                true,
+            }
+          )
 
-      if (!active) return
+      if (!active) {
+        return
+      }
 
       if (error) {
         setError(
@@ -124,21 +142,26 @@ export function BillingResponsibilityCard({
     setError(null)
 
     try {
+      const newResponsibleId =
+        selected || null
+
       const response =
         await fetch(
           `/api/admin/houses/${houseId}/billing-responsible`,
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
             },
 
-            body: JSON.stringify({
-              resident_id:
-                selected || null,
-            }),
+            body:
+              JSON.stringify({
+                resident_id:
+                  newResponsibleId,
+              }),
           }
         )
 
@@ -151,6 +174,10 @@ export function BillingResponsibilityCard({
             'Could not update billing responsibility'
         )
       }
+
+      setSavedResponsibleId(
+        newResponsibleId
+      )
 
       router.refresh()
     } catch (caughtError) {
@@ -166,7 +193,14 @@ export function BillingResponsibilityCard({
 
   const delegated =
     Boolean(
-      currentResponsibleId
+      savedResponsibleId
+    )
+
+  const savedResident =
+    residents.find(
+      (resident) =>
+        resident.id ===
+        savedResponsibleId
     )
 
   return (
@@ -179,49 +213,64 @@ export function BillingResponsibilityCard({
 
       <div
         style={{
-          padding: '1.25rem',
+          padding:
+            '1.25rem',
         }}
       >
         <p
           style={{
-            fontSize: '.8rem',
-            color: 'var(--muted)',
-            marginBottom: '.85rem',
+            fontSize:
+              '.8rem',
+
+            color:
+              'var(--muted)',
+
+            marginBottom:
+              '.85rem',
           }}
         >
-          The Home Owner is the default
-          billing contact. If the owner is
-          away, billing can be delegated to
-          one active tenant or family member
-          in this household.
+          The Home Owner is
+          the default billing
+          contact. Billing may
+          be delegated to one
+          active resident in
+          the same house.
         </p>
 
         <div className="rounded-lg bg-gray-50 border p-3 text-sm mb-4">
           {delegated ? (
             <>
               <strong>
-                Billing is currently delegated.
+                Billing is
+                currently
+                delegated
+                {savedResident
+                  ? ` to ${savedResident.full_name}.`
+                  : '.'}
               </strong>
 
               <p className="mt-1 text-gray-600">
-                The designated resident becomes
-                the resident-side billing contact,
-                receives billing reminders, and
-                can view/pay the household&apos;s
-                invoices. The owner remains the
-                recorded property owner but is no
-                longer the resident-side payer
-                until this delegation is cleared.
+                The designated
+                resident receives
+                and manages this
+                house&apos;s
+                bills. The Home
+                Owner remains the
+                recorded property
+                owner.
               </p>
             </>
           ) : (
             <>
               <strong>
-                Home Owner is responsible.
+                Home Owner is
+                responsible.
               </strong>
 
               <p className="mt-1 text-gray-600">
-                No billing delegation is active.
+                No billing
+                delegation is
+                active.
               </p>
             </>
           )}
@@ -240,7 +289,8 @@ export function BillingResponsibilityCard({
           }
           className="w-full border rounded-lg px-3 py-2 text-sm"
           style={{
-            marginBottom: '.75rem',
+            marginBottom:
+              '.75rem',
           }}
         >
           <option value="">
@@ -258,10 +308,16 @@ export function BillingResponsibilityCard({
             .map(
               (resident) => (
                 <option
-                  key={resident.id}
-                  value={resident.id}
+                  key={
+                    resident.id
+                  }
+                  value={
+                    resident.id
+                  }
                 >
-                  {resident.full_name}
+                  {
+                    resident.full_name
+                  }
                   {' ('}
                   {resident.relationship ===
                   'family_member'
@@ -275,8 +331,12 @@ export function BillingResponsibilityCard({
 
         <button
           type="button"
-          onClick={handleSave}
-          disabled={loading}
+          onClick={
+            handleSave
+          }
+          disabled={
+            loading
+          }
           className="action secondary"
         >
           {loading

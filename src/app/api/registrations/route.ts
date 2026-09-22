@@ -1,82 +1,130 @@
-import { NextRequest, NextResponse } from 'next/server'
+import {
+  NextRequest,
+  NextResponse,
+} from 'next/server'
 import { createHmac } from 'node:crypto'
 import { z } from 'zod'
 import { createServiceClient } from '@/lib/supabase/service'
 
-const schema = z
-  .object({
-    surname: z
-      .string()
-      .trim()
-      .min(1)
-      .max(80),
+const houseNumberSchema =
+  z.string().regex(
+    /^(?:[1-9]|[1-4][0-9]|50)$/
+  )
 
-    first_name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(80),
+const optionalBlockFlat =
+  z
+    .string()
+    .regex(/^(?:[1-9]|10)$/)
+    .nullable()
 
-    other_names: z
-      .string()
-      .trim()
-      .max(100)
-      .nullable(),
-
-    phone: z
-      .string()
-      .trim()
-      .regex(
-        /^(?:\+?234|0)[789]\d{9}$/
-      ),
-
-    email: z
-      .email()
-      .max(254),
-
-    street_id: z.uuid(),
-
-    house_number: z
-      .string()
-      .trim()
-      .min(1)
-      .max(40),
-
-    house_type: z
-      .string()
-      .trim()
-      .max(80)
-      .nullable(),
-
-    relationship: z.enum([
-      'owner',
-      'tenant',
-      'family_member',
-    ]),
-
-    move_in_date: z.iso.date(),
-
-    property_allocation_date:
-      z.iso.date(),
-
-    consent: z.literal(true),
-
-    website: z.string().max(0),
-  })
-  .strict()
-
-function cleanHouseNumber(
-  value: string
-) {
-  return value
+const phoneSchema =
+  z
+    .string()
     .trim()
-    .replace(/\s+/g, ' ')
-}
+    .min(11)
+    .max(16)
+    .regex(
+      /^\+?[0-9]{10,15}$/
+    )
+
+const schema =
+  z
+    .object({
+      surname:
+        z
+          .string()
+          .trim()
+          .min(1)
+          .max(80),
+
+      first_name:
+        z
+          .string()
+          .trim()
+          .min(1)
+          .max(80),
+
+      other_names:
+        z
+          .string()
+          .trim()
+          .max(100)
+          .nullable(),
+
+      phone:
+        phoneSchema,
+
+      email:
+        z
+          .email()
+          .max(254),
+
+      street_id:
+        z.uuid(),
+
+      house_number:
+        houseNumberSchema,
+
+      block_number:
+        optionalBlockFlat,
+
+      flat_number:
+        optionalBlockFlat,
+
+      house_type:
+        z
+          .string()
+          .trim()
+          .max(80)
+          .nullable(),
+
+      relationship:
+        z.enum([
+          'owner',
+          'tenant',
+          'family_member',
+        ]),
+
+      move_in_date:
+        z.iso.date(),
+
+      property_allocation_date:
+        z.iso.date(),
+
+      vehicle_plate_numbers:
+        z
+          .array(
+            z
+              .string()
+              .trim()
+              .min(1)
+              .max(30)
+          )
+          .max(10),
+
+      emergency_contact_name:
+        z
+          .string()
+          .trim()
+          .max(120)
+          .nullable(),
+
+      emergency_contact_phone:
+        phoneSchema.nullable(),
+
+      consent:
+        z.literal(true),
+
+      website:
+        z.string().max(0),
+    })
+    .strict()
 
 export async function POST(
   req: NextRequest
 ) {
-  const text = await req.text()
+  const text =
+    await req.text()
 
   if (text.length > 8192) {
     return NextResponse.json(
@@ -93,7 +141,8 @@ export async function POST(
   let json: unknown
 
   try {
-    json = JSON.parse(text)
+    json =
+      JSON.parse(text)
   } catch {
     return NextResponse.json(
       {
@@ -113,7 +162,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          'Check your details, address, phone number and consent before submitting.',
+          'Check your name, address, status, phone number, email, dates and consent before submitting.',
       },
       {
         status: 400,
@@ -140,39 +189,40 @@ export async function POST(
   const service =
     createServiceClient()
 
-  // Vercel overwrites this header.
-  // Other hosts use a shared restrictive bucket.
   const ip =
-    process.env.VERCEL === '1'
+    process.env.VERCEL ===
+    '1'
       ? req.headers.get(
           'x-vercel-forwarded-for'
         ) || 'unknown'
       : 'local'
 
-  const key = createHmac(
-    'sha256',
-    secret
-  )
-    .update(
-      'registration:' + ip
+  const key =
+    createHmac(
+      'sha256',
+      secret
     )
-    .digest('hex')
+      .update(
+        'registration:' + ip
+      )
+      .digest('hex')
 
   const {
     data: allowed,
     error: limitError,
-  } = await service.rpc(
-    'consume_registration_limit',
-    {
-      p_key: key,
-    }
-  )
+  } =
+    await service.rpc(
+      'consume_registration_limit',
+      {
+        p_key: key,
+      }
+    )
 
   if (limitError) {
     return NextResponse.json(
       {
         error:
-          'Registration is currently unavailable. Please contact your inviting administrator.',
+          'Registration is currently unavailable. Please contact the estate administrator.',
       },
       {
         status: 503,
@@ -188,8 +238,10 @@ export async function POST(
       },
       {
         status: 429,
+
         headers: {
-          'Retry-After': '3600',
+          'Retry-After':
+            '3600',
         },
       }
     )
@@ -200,19 +252,23 @@ export async function POST(
       .trim()
       .toLowerCase()
 
-  // Do not allow somebody who is
-  // already an active resident to
-  // submit another resident identity.
   const {
     data: existingResident,
     error: residentLookupError,
-  } = await service
-    .from('residents')
-    .select('id')
-    .eq('is_active', true)
-    .ilike('email', email)
-    .limit(1)
-    .maybeSingle()
+  } =
+    await service
+      .from('residents')
+      .select('id')
+      .eq(
+        'is_active',
+        true
+      )
+      .ilike(
+        'email',
+        email
+      )
+      .limit(1)
+      .maybeSingle()
 
   if (residentLookupError) {
     return NextResponse.json(
@@ -241,31 +297,35 @@ export async function POST(
   const {
     consent: acknowledged,
     website: honeypot,
-    ...submittedFields
+    ...fields
   } = result.data
 
   void acknowledged
   void honeypot
 
-  const fields = {
-    ...submittedFields,
-    email,
-    house_number:
-      cleanHouseNumber(
-        submittedFields.house_number
-      ),
-    consent_version:
-      'demo-2026-09-21',
-    consent_at:
-      new Date().toISOString(),
-  }
+  const { error } =
+    await service
+      .from(
+        'registration_requests'
+      )
+      .insert({
+        ...fields,
 
-  const { error } = await service
-    .from('registration_requests')
-    .insert(fields)
+        email,
+
+        consent_version:
+          'demo-2026-09-22',
+
+        consent_at:
+          new Date()
+            .toISOString(),
+      })
 
   if (error) {
-    if (error.code === '23505') {
+    if (
+      error.code ===
+      '23505'
+    ) {
       return NextResponse.json(
         {
           error:
@@ -280,7 +340,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          'Could not submit your request. Please check your details or contact the estate administrator.',
+          'Could not submit your registration. Please check your details or contact the estate administrator.',
       },
       {
         status: 400,

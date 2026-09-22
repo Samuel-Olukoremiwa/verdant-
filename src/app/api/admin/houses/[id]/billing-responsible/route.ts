@@ -6,12 +6,15 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
-const bodySchema = z
-  .object({
-    resident_id:
-      z.uuid().nullable(),
-  })
-  .strict()
+const bodySchema =
+  z
+    .object({
+      resident_id:
+        z
+          .uuid()
+          .nullable(),
+    })
+    .strict()
 
 export async function POST(
   req: NextRequest,
@@ -23,10 +26,12 @@ export async function POST(
     }>
   }
 ) {
-  const { id } = await params
+  const { id } =
+    await params
 
   if (
-    !z.uuid()
+    !z
+      .uuid()
       .safeParse(id)
       .success
   ) {
@@ -52,7 +57,8 @@ export async function POST(
   if (!user) {
     return NextResponse.json(
       {
-        error: 'Not signed in',
+        error:
+          'Not signed in',
       },
       {
         status: 401,
@@ -60,7 +66,9 @@ export async function POST(
     )
   }
 
-  const { data: admin } =
+  const {
+    data: admin,
+  } =
     await supabase
       .from('admins')
       .select('role')
@@ -75,7 +83,9 @@ export async function POST(
     ![
       'admin',
       'super_admin',
-    ].includes(admin.role)
+    ].includes(
+      admin.role
+    )
   ) {
     return NextResponse.json(
       {
@@ -117,17 +127,21 @@ export async function POST(
   if (resident_id) {
     const {
       data: resident,
-      error: residentError,
-    } = await service
-      .from('residents')
-      .select(
-        'id, house_id, is_active'
-      )
-      .eq(
-        'id',
-        resident_id
-      )
-      .maybeSingle()
+      error:
+        residentError,
+    } =
+      await service
+        .from(
+          'residents'
+        )
+        .select(
+          'id, house_id, is_active'
+        )
+        .eq(
+          'id',
+          resident_id
+        )
+        .maybeSingle()
 
     if (
       residentError ||
@@ -146,7 +160,8 @@ export async function POST(
 
     if (
       !resident.is_active ||
-      resident.house_id !== id
+      resident.house_id !==
+        id
     ) {
       return NextResponse.json(
         {
@@ -163,15 +178,16 @@ export async function POST(
   const {
     data: updated,
     error,
-  } = await service
-    .from('houses')
-    .update({
-      billing_responsible_resident_id:
-        resident_id,
-    })
-    .eq('id', id)
-    .select('id')
-    .maybeSingle()
+  } =
+    await service
+      .from('houses')
+      .update({
+        billing_responsible_resident_id:
+          resident_id,
+      })
+      .eq('id', id)
+      .select('id')
+      .maybeSingle()
 
   if (error) {
     return NextResponse.json(
@@ -199,6 +215,7 @@ export async function POST(
 
   return NextResponse.json({
     ok: true,
+
     billing_responsible_resident_id:
       resident_id,
   })

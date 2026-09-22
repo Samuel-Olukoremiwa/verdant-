@@ -18,7 +18,8 @@ export async function POST(
     }>
   }
 ) {
-  const { id } = await params
+  const { id } =
+    await params
 
   const supabase =
     await createClient()
@@ -31,7 +32,8 @@ export async function POST(
   if (!user) {
     return NextResponse.json(
       {
-        error: 'Not signed in',
+        error:
+          'Not signed in',
       },
       {
         status: 401,
@@ -39,7 +41,9 @@ export async function POST(
     )
   }
 
-  const { data: admin } =
+  const {
+    data: admin,
+  } =
     await supabase
       .from('admins')
       .select('id, role')
@@ -58,7 +62,8 @@ export async function POST(
   ) {
     return NextResponse.json(
       {
-        error: 'Not authorized',
+        error:
+          'Not authorized',
       },
       {
         status: 403,
@@ -69,7 +74,9 @@ export async function POST(
   const service =
     createServiceClient()
 
-  const { data: reg } =
+  const {
+    data: reg,
+  } =
     await service
       .from(
         'registration_requests'
@@ -90,7 +97,10 @@ export async function POST(
     )
   }
 
-  if (reg.status !== 'pending') {
+  if (
+    reg.status !==
+    'pending'
+  ) {
     return NextResponse.json(
       {
         error:
@@ -102,20 +112,25 @@ export async function POST(
     )
   }
 
-  const input = z
-    .object({
-      move_in_date:
-        z.iso.date().optional(),
+  const input =
+    z
+      .object({
+        move_in_date:
+          z.iso
+            .date()
+            .optional(),
 
-      property_allocation_date:
-        z.iso.date().optional(),
-    })
-    .strict()
-    .safeParse(
-      await req
-        .json()
-        .catch(() => ({}))
-    )
+        property_allocation_date:
+          z.iso
+            .date()
+            .optional(),
+      })
+      .strict()
+      .safeParse(
+        await req
+          .json()
+          .catch(() => ({}))
+      )
 
   if (!input.success) {
     return NextResponse.json(
@@ -129,25 +144,27 @@ export async function POST(
     )
   }
 
-  const dates = z
-    .object({
-      move_in_date:
-        z.iso.date(),
+  const dates =
+    z
+      .object({
+        move_in_date:
+          z.iso.date(),
 
-      property_allocation_date:
-        z.iso.date(),
-    })
-    .safeParse({
-      move_in_date:
-        input.data
-          .move_in_date ??
-        reg.move_in_date,
+        property_allocation_date:
+          z.iso.date(),
+      })
+      .safeParse({
+        move_in_date:
+          input.data
+            .move_in_date ??
+          reg.move_in_date,
 
-      property_allocation_date:
-        input.data
-          .property_allocation_date ??
-        reg.property_allocation_date,
-    })
+        property_allocation_date:
+          input.data
+            .property_allocation_date ??
+          reg
+            .property_allocation_date,
+      })
 
   if (!dates.success) {
     return NextResponse.json(
@@ -165,7 +182,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          'This registration does not have a valid street. Correct the address before approval.',
+          'This registration does not have a valid street.',
       },
       {
         status: 400,
@@ -173,34 +190,30 @@ export async function POST(
     )
   }
 
-  const email = String(
-    reg.email ?? ''
-  )
-    .trim()
-    .toLowerCase()
+  const email =
+    String(
+      reg.email ?? ''
+    )
+      .trim()
+      .toLowerCase()
 
   const {
-    data: duplicateResident,
-    error: duplicateError,
-  } = await service
-    .from('residents')
-    .select('id')
-    .eq('is_active', true)
-    .ilike('email', email)
-    .limit(1)
-    .maybeSingle()
-
-  if (duplicateError) {
-    return NextResponse.json(
-      {
-        error:
-          'Could not verify whether this resident already exists.',
-      },
-      {
-        status: 500,
-      }
-    )
-  }
+    data:
+      duplicateResident,
+  } =
+    await service
+      .from('residents')
+      .select('id')
+      .eq(
+        'is_active',
+        true
+      )
+      .ilike(
+        'email',
+        email
+      )
+      .limit(1)
+      .maybeSingle()
 
   if (duplicateResident) {
     return NextResponse.json(
@@ -214,37 +227,57 @@ export async function POST(
     )
   }
 
-  // Resolve the property instead of
-  // blindly creating another house.
-  //
-  // If the same street + house/block/
-  // flat already exists, we reuse the
-  // existing house_id.
   const {
     data: houseId,
-    error: houseError,
-  } = await service.rpc(
-    'resolve_registration_house',
-    {
-      p_street_id:
-        reg.street_id,
+    error:
+      houseError,
+  } =
+    await service.rpc(
+      'resolve_registration_house',
+      {
+        p_street_id:
+          reg.street_id,
 
-      p_house_number:
-        reg.house_number,
+        p_house_number:
+          reg.house_number,
 
-      p_house_type:
-        reg.house_type,
-    }
-  )
+        p_house_type:
+          reg.house_type,
+      }
+    )
 
   if (
     houseError ||
-    typeof houseId !== 'string'
+    typeof houseId !==
+      'string'
   ) {
+    const rawMessage =
+      houseError?.message ??
+      ''
+
+    if (
+      rawMessage.includes(
+        'resolve_registration_house'
+      ) ||
+      rawMessage.includes(
+        'schema cache'
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'The registration database migration has not been applied yet. Run the database migrations in Supabase, then try again.',
+        },
+        {
+          status: 503,
+        }
+      )
+    }
+
     return NextResponse.json(
       {
         error:
-          houseError?.message ??
+          rawMessage ||
           'Could not resolve the property',
       },
       {
@@ -253,51 +286,39 @@ export async function POST(
     )
   }
 
-  // There can only be one active
-  // Home Owner for a household.
   if (
-    reg.relationship === 'owner'
+    reg.relationship ===
+    'owner'
   ) {
     const {
-      data: existingOwner,
-      error: ownerError,
-    } = await service
-      .from('residents')
-      .select(
-        'id, full_name'
-      )
-      .eq(
-        'house_id',
-        houseId
-      )
-      .eq(
-        'relationship',
-        'owner'
-      )
-      .eq(
-        'is_active',
-        true
-      )
-      .limit(1)
-      .maybeSingle()
-
-    if (ownerError) {
-      return NextResponse.json(
-        {
-          error:
-            'Could not verify the household owner.',
-        },
-        {
-          status: 500,
-        }
-      )
-    }
+      data:
+        existingOwner,
+    } =
+      await service
+        .from('residents')
+        .select(
+          'id, full_name'
+        )
+        .eq(
+          'house_id',
+          houseId
+        )
+        .eq(
+          'relationship',
+          'owner'
+        )
+        .eq(
+          'is_active',
+          true
+        )
+        .limit(1)
+        .maybeSingle()
 
     if (existingOwner) {
       return NextResponse.json(
         {
           error:
-            `This property already has an active Home Owner: ${existingOwner.full_name}. Change this registration to Tenant or Family Member if appropriate.`,
+            `House ${reg.house_number} already has an active Home Owner: ${existingOwner.full_name}. Change this applicant to Tenant or Family Member if appropriate.`,
         },
         {
           status: 409,
@@ -306,38 +327,75 @@ export async function POST(
     }
   }
 
-  const fullName = [
-    reg.first_name,
-    reg.other_names,
-    reg.surname,
-  ]
-    .map((value) =>
-      String(value ?? '').trim()
-    )
-    .filter(Boolean)
-    .join(' ')
+  const fullName =
+    [
+      reg.first_name,
+      reg.other_names,
+      reg.surname,
+    ]
+      .map((value) =>
+        String(
+          value ?? ''
+        ).trim()
+      )
+      .filter(Boolean)
+      .join(' ')
 
   const qrValue =
     `RES-${crypto.randomUUID()}`
 
   const {
     data: resident,
-    error: residentError,
-  } = await service
-    .from('residents')
-    .insert({
-      house_id: houseId,
-      full_name: fullName,
-      phone: reg.phone,
-      email,
-      relationship:
-        reg.relationship,
-      ...dates.data,
-      qr_code_value:
-        qrValue,
-    })
-    .select()
-    .single()
+    error:
+      residentError,
+  } =
+    await service
+      .from('residents')
+      .insert({
+        house_id:
+          houseId,
+
+        full_name:
+          fullName,
+
+        phone:
+          reg.phone,
+
+        email,
+
+        relationship:
+          reg.relationship,
+
+        block_number:
+          reg.block_number ??
+          null,
+
+        flat_number:
+          reg.flat_number ??
+          null,
+
+        vehicle_plate_numbers:
+          reg
+            .vehicle_plate_numbers ??
+          null,
+
+        emergency_contact_name:
+          reg
+            .emergency_contact_name ??
+          null,
+
+        emergency_contact_phone:
+          reg
+            .emergency_contact_phone ??
+          null,
+
+        ...dates.data,
+
+        qr_code_value:
+          qrValue,
+      })
+      .select()
+      .single()
 
   if (
     residentError ||
@@ -346,11 +404,8 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          residentError?.code ===
-          '23505'
-            ? 'This resident or household relationship conflicts with an existing record.'
-            : residentError?.message ??
-              'Could not create resident',
+          residentError?.message ??
+          'Could not create resident',
       },
       {
         status:
@@ -362,12 +417,14 @@ export async function POST(
     )
   }
 
-  // Create portal login.
   const {
     data: invited,
-    error: inviteError,
+    error:
+      inviteError,
   } =
-    await service.auth.admin
+    await service
+      .auth
+      .admin
       .inviteUserByEmail(
         email,
         {
@@ -380,8 +437,6 @@ export async function POST(
     inviteError ||
     !invited.user
   ) {
-    // Do not leave a duplicate resident
-    // record if Auth creation failed.
     await service
       .from('residents')
       .delete()
@@ -402,7 +457,10 @@ export async function POST(
     )
   }
 
-  const { error: linkError } =
+  const {
+    error:
+      linkError,
+  } =
     await service
       .from('residents')
       .update({
@@ -427,26 +485,33 @@ export async function POST(
   }
 
   const {
-    error: approvalError,
-  } = await service
-    .from(
-      'registration_requests'
-    )
-    .update({
-      status: 'approved',
+    error:
+      approvalError,
+  } =
+    await service
+      .from(
+        'registration_requests'
+      )
+      .update({
+        status:
+          'approved',
 
-      ...dates.data,
+        ...dates.data,
 
-      reviewed_by:
-        admin.id,
+        reviewed_by:
+          admin.id,
 
-      reviewed_at:
-        new Date().toISOString(),
+        reviewed_at:
+          new Date()
+            .toISOString(),
 
-      created_resident_id:
-        resident.id,
-    })
-    .eq('id', id)
+        created_resident_id:
+          resident.id,
+      })
+      .eq(
+        'id',
+        id
+      )
 
   if (approvalError) {
     return NextResponse.json(

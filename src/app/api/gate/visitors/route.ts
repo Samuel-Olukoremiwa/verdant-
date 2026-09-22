@@ -5,16 +5,27 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { sendGateDueEmails } from '@/lib/gate-due-emails'
 
-export const maxDuration = 60
+export const maxDuration =
+  60
 
 type VisitorRedeemResult = {
   visitor: string
+
+  visitor_phone:
+    | string
+    | null
+
   host: string
   address: string
   message: string
-  has_outstanding: boolean
+
+  has_outstanding:
+    boolean
+
   balance: number
-  alert_queued: boolean
+
+  alert_queued:
+    boolean
 }
 
 export async function POST(
@@ -25,7 +36,8 @@ export async function POST(
 
   const {
     data: { user },
-  } = await db.auth.getUser()
+  } =
+    await db.auth.getUser()
 
   if (!user) {
     return NextResponse.json(
@@ -66,13 +78,14 @@ export async function POST(
   const {
     data,
     error,
-  } = await db.rpc(
-    'redeem_visitor_pass',
-    {
-      p_code:
-        body.code.trim(),
-    }
-  )
+  } =
+    await db.rpc(
+      'redeem_visitor_pass',
+      {
+        p_code:
+          body.code.trim(),
+      }
+    )
 
   if (error) {
     return NextResponse.json(
@@ -87,7 +100,9 @@ export async function POST(
   }
 
   const result =
-    data as VisitorRedeemResult | null
+    data as
+      | VisitorRedeemResult
+      | null
 
   if (!result) {
     return NextResponse.json(
@@ -101,8 +116,6 @@ export async function POST(
     )
   }
 
-  // Return the gate decision immediately.
-  // Process durable billing-email jobs afterwards.
   if (
     result.has_outstanding
   ) {
@@ -117,29 +130,7 @@ export async function POST(
     })
   }
 
-  // Gate staff only need the warning and
-  // balance. Detailed invoice information
-  // is not exposed here.
-  return NextResponse.json({
-    visitor:
-      result.visitor,
-
-    host:
-      result.host,
-
-    address:
-      result.address,
-
-    message:
-      result.message,
-
-    has_outstanding:
-      result.has_outstanding,
-
-    balance:
-      result.balance,
-
-    alert_queued:
-      result.alert_queued,
-  })
+  return NextResponse.json(
+    result
+  )
 }

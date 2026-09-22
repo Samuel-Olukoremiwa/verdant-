@@ -1,0 +1,97 @@
+.page {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.card {
+  background: white;
+  border: 1px solid #d9dedb;
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+  overflow: visible;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.qr {
+  display: block;
+  width: min(100%, 360px);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  margin: 0 auto 1rem;
+  border: 0;
+}
+
+.name {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.address {
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
+  color: #5f6b64;
+}
+
+.note {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: #6b746f;
+}
+
+@page {
+  size: A4;
+  margin: 15mm;
+}
+
+@media print {
+  .page {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .top {
+    display: none !important;
+  }
+
+  .card {
+    width: 160mm;
+    max-width: 160mm;
+    margin: 0 auto;
+    padding: 12mm;
+    border: 1px solid black;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: visible !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .qr {
+    width: 80mm !important;
+    height: 80mm !important;
+    max-width: 80mm !important;
+    max-height: 80mm !important;
+    object-fit: contain !important;
+    margin: 0 auto 8mm !important;
+  }
+
+  .name,
+  .address,
+  .note {
+    color: black !important;
+  }
+}
