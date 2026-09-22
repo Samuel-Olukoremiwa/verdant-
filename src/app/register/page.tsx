@@ -9,7 +9,6 @@ import {
 } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyDbError } from '@/lib/friendly-error'
-import { ddMmYyyyToIso } from '@/lib/date-format'
 
 const HOUSE_TYPES = [
   'Studio',
@@ -167,24 +166,20 @@ export default function RegisterPage() {
       }
 
       const moveInDate =
-        ddMmYyyyToIso(
-          form.move_in_date
-        )
+        form.move_in_date
 
       const allocationDate =
-        ddMmYyyyToIso(
-          form.property_allocation_date
-        )
+        form.property_allocation_date
 
       if (!moveInDate) {
         throw new Error(
-          'Enter the move-in date as DD/MM/YYYY.'
+          'Select the move-in date.'
         )
       }
 
       if (!allocationDate) {
         throw new Error(
-          'Enter the property allocation date as DD/MM/YYYY.'
+          'Select the property allocation date.'
         )
       }
 
@@ -689,10 +684,7 @@ export default function RegisterPage() {
 
                 <input
                   required
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="DD/MM/YYYY"
-                  maxLength={10}
+                  type="date"
                   value={
                     form.move_in_date
                   }
@@ -710,10 +702,7 @@ export default function RegisterPage() {
 
                 <input
                   required
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="DD/MM/YYYY"
-                  maxLength={10}
+                  type="date"
                   value={
                     form
                       .property_allocation_date

@@ -9,10 +9,6 @@ import {
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { friendlyDbError } from '@/lib/friendly-error'
-import {
-  ddMmYyyyToIso,
-  isoToDdMmYyyy,
-} from '@/lib/date-format'
 
 type HouseOption = {
   id: string
@@ -170,20 +166,14 @@ export default function EditResidentPage({
       surname: '',
       first_name: '',
       other_names: '',
-
       phone: '',
       email: '',
-
       relationship: '',
-
       block_number: '',
       flat_number: '',
-
       vehicle_plate_numbers: '',
-
       emergency_contact_name: '',
       emergency_contact_phone: '',
-
       move_in_date: '',
       property_allocation_date: '',
     })
@@ -345,16 +335,14 @@ export default function EditResidentPage({
           '',
 
         move_in_date:
-          isoToDdMmYyyy(
-            resident
-              .move_in_date
-          ),
+          resident
+            .move_in_date ??
+          '',
 
         property_allocation_date:
-          isoToDdMmYyyy(
-            resident
-              .property_allocation_date
-          ),
+          resident
+            .property_allocation_date ??
+          '',
       })
 
       setLoading(false)
@@ -430,25 +418,21 @@ export default function EditResidentPage({
       }
 
       const moveIn =
-        ddMmYyyyToIso(
-          form.move_in_date
-        )
+        form.move_in_date
 
       const allocation =
-        ddMmYyyyToIso(
-          form
-            .property_allocation_date
-        )
+        form
+          .property_allocation_date
 
       if (!moveIn) {
         throw new Error(
-          'Enter the move-in date as DD/MM/YYYY.'
+          'Select the move-in date.'
         )
       }
 
       if (!allocation) {
         throw new Error(
-          'Enter the property allocation date as DD/MM/YYYY.'
+          'Select the property allocation date.'
         )
       }
 
@@ -906,10 +890,7 @@ export default function EditResidentPage({
 
               <input
                 required
-                type="text"
-                inputMode="numeric"
-                placeholder="DD/MM/YYYY"
-                maxLength={10}
+                type="date"
                 className="w-full border rounded-lg px-3 py-2"
                 value={
                   form.move_in_date
@@ -930,10 +911,7 @@ export default function EditResidentPage({
 
               <input
                 required
-                type="text"
-                inputMode="numeric"
-                placeholder="DD/MM/YYYY"
-                maxLength={10}
+                type="date"
                 className="w-full border rounded-lg px-3 py-2"
                 value={
                   form

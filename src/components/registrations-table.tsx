@@ -2,9 +2,7 @@
 
 import { useState } from 'react'
 import {
-  ddMmYyyyToIso,
   formatDateTimeGb,
-  isoToDdMmYyyy,
 } from '@/lib/date-format'
 
 type Request = {
@@ -69,8 +67,7 @@ function CopyLinkButton() {
     setCopied(true)
 
     setTimeout(
-      () =>
-        setCopied(false),
+      () => setCopied(false),
       2000
     )
   }
@@ -122,9 +119,8 @@ function RequestRow({
 }) {
   const [moveIn, setMoveIn] =
     useState(
-      isoToDdMmYyyy(
-        req.move_in_date
-      )
+      req.move_in_date ??
+        ''
     )
 
   const [
@@ -132,10 +128,9 @@ function RequestRow({
     setAllocation,
   ] =
     useState(
-      isoToDdMmYyyy(
-        req
-          .property_allocation_date
-      )
+      req
+        .property_allocation_date ??
+        ''
     )
 
   const [loading, setLoading] =
@@ -184,25 +179,21 @@ function RequestRow({
 
   async function approve() {
     const moveInIso =
-      ddMmYyyyToIso(
-        moveIn
-      )
+      moveIn
 
     const allocationIso =
-      ddMmYyyyToIso(
-        allocation
-      )
+      allocation
 
     if (!moveInIso) {
       setError(
-        'Enter the move-in date as DD/MM/YYYY.'
+        'Select the move-in date.'
       )
       return
     }
 
     if (!allocationIso) {
       setError(
-        'Enter the property allocation date as DD/MM/YYYY.'
+        'Select the property allocation date.'
       )
       return
     }
@@ -361,6 +352,7 @@ function RequestRow({
               {req
                 .emergency_contact_name ||
                 '—'}
+
               {req
                 .emergency_contact_phone
                 ? ` · ${req.emergency_contact_phone}`
@@ -396,10 +388,7 @@ function RequestRow({
               Move-in date *
 
               <input
-                type="text"
-                inputMode="numeric"
-                placeholder="DD/MM/YYYY"
-                maxLength={10}
+                type="date"
                 required
                 className="block border rounded-lg p-2"
                 value={moveIn}
@@ -415,10 +404,7 @@ function RequestRow({
               Property allocation date *
 
               <input
-                type="text"
-                inputMode="numeric"
-                placeholder="DD/MM/YYYY"
-                maxLength={10}
+                type="date"
                 required
                 className="block border rounded-lg p-2"
                 value={
