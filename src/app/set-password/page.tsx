@@ -18,7 +18,7 @@ import {
   readPasswordFlowCookie,
 } from '@/lib/password-flow'
 
-export default async function ResetPasswordPage() {
+export default async function SetPasswordPage() {
   const cookieStore =
     await cookies()
 
@@ -41,7 +41,7 @@ export default async function ResetPasswordPage() {
     Boolean(
       flow &&
       flow.purpose ===
-        'recovery' &&
+        'invite' &&
       user &&
       user.id ===
         flow.userId
@@ -75,11 +75,11 @@ export default async function ResetPasswordPage() {
         </Link>
 
         <span className="eyebrow">
-          Account recovery
+          Account setup
         </span>
 
         <h1>
-          Choose a new
+          Create your
           password.
         </h1>
 
@@ -87,10 +87,11 @@ export default async function ResetPasswordPage() {
         !user ? (
           <>
             <p>
-              This password
-              reset session is
-              invalid or has
-              expired.
+              This account
+              invitation is
+              invalid, expired,
+              or has already
+              been used.
             </p>
 
             <p
@@ -99,37 +100,33 @@ export default async function ResetPasswordPage() {
                   '1rem',
               }}
             >
-              For security,
-              opening this page
-              while already
-              signed in is not
-              enough to change a
-              password. Use a
-              fresh recovery
-              email.
+              Ask your estate
+              administrator to
+              send a new portal
+              invitation.
             </p>
 
             <p className="login-help">
-              <Link href="/forgot-password">
-                Request a new
-                reset link →
+              <Link href="/login">
+                ← Back to sign
+                in
               </Link>
             </p>
           </>
         ) : (
           <>
             <p>
-              Enter a new
-              password for the
-              verified account
-              below.
+              Your invitation
+              has been verified.
+              Create a password
+              for this account.
             </p>
 
             <PasswordSetupForm
-              mode="recovery"
+              mode="invite"
               email={
                 user.email ??
-                'Verified account'
+                'Invited account'
               }
             />
           </>
@@ -153,10 +150,10 @@ export default async function ResetPasswordPage() {
 
 export const metadata = {
   title:
-    'Reset Password',
+    'Set Up Account',
 
   description:
-    'Reset your Verdant account password.',
+    'Set up your Verdant portal password.',
 
   robots: {
     index: false,

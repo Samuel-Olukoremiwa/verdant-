@@ -76,6 +76,8 @@ export async function POST(
 
   const {
     data: reg,
+    error:
+      registrationError,
   } =
     await service
       .from(
@@ -85,7 +87,10 @@ export async function POST(
       .eq('id', id)
       .single()
 
-  if (!reg) {
+  if (
+    registrationError ||
+    !reg
+  ) {
     return NextResponse.json(
       {
         error:
@@ -197,13 +202,33 @@ export async function POST(
       .trim()
       .toLowerCase()
 
+  if (!email) {
+    return NextResponse.json(
+      {
+        error:
+          'This registration does not have a valid email address.',
+      },
+      {
+        status: 400,
+      }
+    )
+  }
+
+  /*
+   * Prevent approving another active
+   * resident record with the same email.
+   */
   const {
     data:
       duplicateResident,
+    error:
+      duplicateLookupError,
   } =
     await service
       .from('residents')
-      .select('id')
+      .select(
+        'id, full_name, auth_user_id'
+      )
       .eq(
         'is_active',
         true
@@ -215,11 +240,27 @@ export async function POST(
       .limit(1)
       .maybeSingle()
 
+  if (duplicateLookupError) {
+    return NextResponse.json(
+      {
+        error:
+          'Could not verify whether this resident already exists.',
+      },
+      {
+        status: 500,
+      }
+    )
+  }
+
   if (duplicateResident) {
     return NextResponse.json(
       {
         error:
-          'An active resident already uses this email address.',
+          `An active resident already uses this email address${
+            duplicateResident.full_name
+              ? `: ${duplicateResident.full_name}`
+              : ''
+          }.`,
       },
       {
         status: 409,
@@ -227,6 +268,15 @@ export async function POST(
     )
   }
 
+  /*
+   * Resolve the physical house.
+   *
+   * If the same street + canonical
+   * house number already exists, the
+   * registration is attached to that
+   * existing house rather than creating
+   * duplicate billing.
+   */
   const {
     data: houseId,
     error:
@@ -286,6 +336,10 @@ export async function POST(
     )
   }
 
+  /*
+   * There may only be one active owner
+   * for a physical house.
+   */
   if (
     reg.relationship ===
     'owner'
@@ -293,6 +347,8 @@ export async function POST(
     const {
       data:
         existingOwner,
+      error:
+        ownerLookupError,
     } =
       await service
         .from('residents')
@@ -313,6 +369,18 @@ export async function POST(
         )
         .limit(1)
         .maybeSingle()
+
+    if (ownerLookupError) {
+      return NextResponse.json(
+        {
+          error:
+            'Could not verify the existing Home Owner for this property.',
+        },
+        {
+          status: 500,
+        }
+      )
+    }
 
     if (existingOwner) {
       return NextResponse.json(
@@ -341,9 +409,27 @@ export async function POST(
       .filter(Boolean)
       .join(' ')
 
+  if (!fullName) {
+    return NextResponse.json(
+      {
+        error:
+          'This registration does not contain a valid resident name.',
+      },
+      {
+        status: 400,
+      }
+    )
+  }
+
   const qrValue =
     `RES-${crypto.randomUUID()}`
 
+  /*
+   * Create the estate resident first.
+   *
+   * auth_user_id remains NULL until the
+   * Supabase Auth invite succeeds.
+   */
   const {
     data: resident,
     error:
@@ -394,7 +480,9 @@ export async function POST(
         qr_code_value:
           qrValue,
       })
-      .select()
+      .select(
+        'id, email, full_name'
+      )
       .single()
 
   if (
@@ -417,6 +505,45 @@ export async function POST(
     )
   }
 
+  /*
+   * A NEW account uses the INVITE flow.
+   *
+   * It must go to /set-password,
+   * never /reset-password.
+   */
+  const siteUrl =
+    process.env
+      .NEXT_PUBLIC_SITE_URL
+      ?.replace(
+        /\/$/,
+        ''
+      )
+
+  if (!siteUrl) {
+    /*
+     * Resident creation must be rolled
+     * back if we cannot safely create
+     * their login.
+     */
+    await service
+      .from('residents')
+      .delete()
+      .eq(
+        'id',
+        resident.id
+      )
+
+    return NextResponse.json(
+      {
+        error:
+          'NEXT_PUBLIC_SITE_URL is not configured. Resident approval was not completed.',
+      },
+      {
+        status: 500,
+      }
+    )
+  }
+
   const {
     data: invited,
     error:
@@ -429,7 +556,7 @@ export async function POST(
         email,
         {
           redirectTo:
-            `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`,
+            `${siteUrl}/set-password`,
         }
       )
 
@@ -437,6 +564,11 @@ export async function POST(
     inviteError ||
     !invited.user
   ) {
+    /*
+     * Do not leave a resident record
+     * behind when Auth account creation
+     * failed.
+     */
     await service
       .from('residents')
       .delete()
@@ -449,7 +581,7 @@ export async function POST(
       {
         error:
           inviteError?.message ??
-          'Could not send invite',
+          'Could not send the portal invitation',
       },
       {
         status: 500,
@@ -457,6 +589,60 @@ export async function POST(
     )
   }
 
+  /*
+   * Extra account-isolation safety:
+   * the Auth user returned by Supabase
+   * must carry the same email as the
+   * resident being approved.
+   */
+  const invitedEmail =
+    invited.user.email
+      ?.trim()
+      .toLowerCase()
+
+  if (
+    !invitedEmail ||
+    invitedEmail !== email
+  ) {
+    /*
+     * Do NOT link a mismatched Auth user
+     * to this resident.
+     */
+    await service
+      .from('residents')
+      .delete()
+      .eq(
+        'id',
+        resident.id
+      )
+
+    /*
+     * The newly created Auth account is
+     * also removed because it did not
+     * pass the identity check.
+     */
+    await service
+      .auth
+      .admin
+      .deleteUser(
+        invited.user.id
+      )
+
+    return NextResponse.json(
+      {
+        error:
+          'The portal account email did not match the resident email. No resident login was linked.',
+      },
+      {
+        status: 500,
+      }
+    )
+  }
+
+  /*
+   * Link THIS resident to THIS newly
+   * invited Supabase Auth user.
+   */
   const {
     error:
       linkError,
@@ -471,12 +657,35 @@ export async function POST(
         'id',
         resident.id
       )
+      .is(
+        'auth_user_id',
+        null
+      )
 
   if (linkError) {
+    /*
+     * Don't leave an ambiguous account
+     * relationship behind.
+     */
+    await service
+      .auth
+      .admin
+      .deleteUser(
+        invited.user.id
+      )
+
+    await service
+      .from('residents')
+      .delete()
+      .eq(
+        'id',
+        resident.id
+      )
+
     return NextResponse.json(
       {
         error:
-          'The invitation was sent, but linking the resident account failed. Please contact the administrator before retrying.',
+          'The invitation was created, but the resident account could not be linked safely. The incomplete account was rolled back.',
       },
       {
         status: 500,
@@ -484,6 +693,52 @@ export async function POST(
     )
   }
 
+  /*
+   * Confirm the link we just wrote.
+   */
+  const {
+    data:
+      linkedResident,
+    error:
+      linkedResidentError,
+  } =
+    await service
+      .from('residents')
+      .select(
+        'id, email, auth_user_id'
+      )
+      .eq(
+        'id',
+        resident.id
+      )
+      .single()
+
+  if (
+    linkedResidentError ||
+    !linkedResident ||
+    linkedResident.auth_user_id !==
+      invited.user.id ||
+    linkedResident.email
+      ?.trim()
+      .toLowerCase() !==
+      email
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'Resident account verification failed after invitation. Please contact the administrator before retrying.',
+      },
+      {
+        status: 500,
+      }
+    )
+  }
+
+  /*
+   * Registration is only considered
+   * approved after the resident and Auth
+   * account are safely linked.
+   */
   const {
     error:
       approvalError,
@@ -512,12 +767,16 @@ export async function POST(
         'id',
         id
       )
+      .eq(
+        'status',
+        'pending'
+      )
 
   if (approvalError) {
     return NextResponse.json(
       {
         error:
-          'The resident account was created, but saving approval failed. Please contact the administrator before retrying.',
+          'The resident account was created, but saving the registration approval failed. Please contact the administrator before retrying.',
       },
       {
         status: 500,
@@ -535,9 +794,15 @@ export async function POST(
 
   return NextResponse.json({
     email,
+
     residentName:
       fullName,
+
     houseId,
+
+    authUserId:
+      invited.user.id,
+
     sms,
   })
 }
