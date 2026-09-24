@@ -35,6 +35,7 @@ type House = {
   address: string
   house_type: string | null
   street_id: string | null
+  billing_responsible_resident_id: string | null
   streets: {
     name: string
   } | null
@@ -61,7 +62,7 @@ type PreviewPeriod = {
   already_exists: boolean
 }
 
-type Preview = {
+type ResidentPreview = {
   resident_id: string
   resident_name: string
   due_type_id: string
@@ -74,12 +75,33 @@ type Preview = {
   total_to_create: number
 }
 
+type HousePreview = {
+  house_id: string
+  address: string
+  due_type_id: string
+  due_type_name: string
+  frequency: string
+  amount_per_period: number
+  billing_contact_id: string | null
+  billing_contact_name: string | null
+  periods: PreviewPeriod[]
+  create_count: number
+  duplicate_count: number
+  total_to_create: number
+}
+
 type Summary = {
   created: number
   skipped: number
 }
 
 type HousePeriod = {
+  start: string
+  end: string
+  label: string
+}
+
+type HouseRange = {
   start: string
   end: string
   label: string
@@ -177,7 +199,9 @@ function displayDate(value: string | null) {
   ].join('/')
 }
 
-function canonicalFrequency(value: string | null | undefined) {
+function canonicalFrequency(
+  value: string | null | undefined
+) {
   const frequency = (value ?? '')
     .trim()
     .toLowerCase()
@@ -232,7 +256,7 @@ function modeFromQuery(
   return null
 }
 
-function makeHousePeriod(
+function makeSingleHousePeriod(
   frequency: string,
   values: {
     period_year: string
@@ -322,17 +346,158 @@ function makeHousePeriod(
   }
 }
 
+function makeHouseRange(
+  frequency: string,
+  values: {
+    range_from_year: string
+    range_from_month: string
+    range_from_quarter: string
+    range_to_year: string
+    range_to_month: string
+    range_to_quarter: string
+    one_time_start: string
+    one_time_end: string
+  }
+): HouseRange | null {
+  const kind = canonicalFrequency(frequency)
+
+  if (kind === 'monthly') {
+    const fromYear = Number(values.range_from_year)
+    const fromMonth = Number(values.range_from_month)
+    const toYear = Number(values.range_to_year)
+    const toMonth = Number(values.range_to_month)
+
+    if (
+      !Number.isInteger(fromYear) ||
+      !Number.isInteger(fromMonth) ||
+      !Number.isInteger(toYear) ||
+      !Number.isInteger(toMonth) ||
+      fromMonth < 1 ||
+      fromMonth > 12 ||
+      toMonth < 1 ||
+      toMonth > 12
+    ) {
+      return null
+    }
+
+    const start = isoDate(fromYear, fromMonth, 1)
+    const end = isoDate(
+      toYear,
+      toMonth,
+      lastDayOfMonth(toYear, toMonth)
+    )
+
+    if (start > end) return null
+
+    return {
+      start,
+      end,
+      label:
+        start === isoDate(toYear, toMonth, 1)
+          ? `${MONTHS[fromMonth - 1]} ${fromYear}`
+          : `${MONTHS[fromMonth - 1]} ${fromYear} → ${MONTHS[toMonth - 1]} ${toYear}`,
+    }
+  }
+
+  if (kind === 'quarterly') {
+    const fromYear = Number(values.range_from_year)
+    const toYear = Number(values.range_to_year)
+    const fromQuarter = QUARTERS.find(
+      (quarter) =>
+        quarter.value === values.range_from_quarter
+    )
+    const toQuarter = QUARTERS.find(
+      (quarter) =>
+        quarter.value === values.range_to_quarter
+    )
+
+    if (
+      !Number.isInteger(fromYear) ||
+      !Number.isInteger(toYear) ||
+      !fromQuarter ||
+      !toQuarter
+    ) {
+      return null
+    }
+
+    const start = isoDate(
+      fromYear,
+      fromQuarter.startMonth,
+      1
+    )
+    const toEndMonth = toQuarter.startMonth + 2
+    const end = isoDate(
+      toYear,
+      toEndMonth,
+      lastDayOfMonth(toYear, toEndMonth)
+    )
+
+    if (start > end) return null
+
+    return {
+      start,
+      end,
+      label:
+        fromYear === toYear &&
+        fromQuarter.value === toQuarter.value
+          ? `Q${fromQuarter.value} ${fromYear}`
+          : `Q${fromQuarter.value} ${fromYear} → Q${toQuarter.value} ${toYear}`,
+    }
+  }
+
+  if (kind === 'yearly') {
+    const fromYear = Number(values.range_from_year)
+    const toYear = Number(values.range_to_year)
+
+    if (
+      !Number.isInteger(fromYear) ||
+      !Number.isInteger(toYear) ||
+      fromYear > toYear
+    ) {
+      return null
+    }
+
+    return {
+      start: isoDate(fromYear, 1, 1),
+      end: isoDate(toYear, 12, 31),
+      label:
+        fromYear === toYear
+          ? String(fromYear)
+          : `${fromYear} → ${toYear}`,
+    }
+  }
+
+  if (
+    !values.one_time_start ||
+    !values.one_time_end ||
+    values.one_time_start > values.one_time_end
+  ) {
+    return null
+  }
+
+  return {
+    start: values.one_time_start,
+    end: values.one_time_end,
+    label: `${displayDate(values.one_time_start)} → ${displayDate(values.one_time_end)}`,
+  }
+}
+
 function freshForm() {
   return {
     due_type_id: '',
     due_date: '',
     resident_id: '',
-    start_basis: 'allocation',
-    custom_start: '',
+    billing_start: '',
     end_date: '',
     period_year: String(CURRENT_YEAR),
     period_month: DEFAULT_MONTH,
     period_quarter: DEFAULT_QUARTER,
+    range_from_year: String(CURRENT_YEAR),
+    range_from_month: DEFAULT_MONTH,
+    range_from_quarter: DEFAULT_QUARTER,
+    range_to_year: String(CURRENT_YEAR),
+    range_to_month: DEFAULT_MONTH,
+    range_to_quarter: DEFAULT_QUARTER,
     one_time_start: '',
     one_time_end: '',
   }
@@ -347,37 +512,28 @@ export default function GenerateInvoicesPage() {
 
   const [mode, setMode] =
     useState<BillingMode>(null)
-
   const [loading, setLoading] =
     useState(false)
-
   const [error, setError] =
     useState<string | null>(null)
-
   const [summary, setSummary] =
     useState<Summary | null>(null)
-
-  const [preview, setPreview] =
-    useState<Preview | null>(null)
-
+  const [residentPreview, setResidentPreview] =
+    useState<ResidentPreview | null>(null)
+  const [housePreview, setHousePreview] =
+    useState<HousePreview | null>(null)
   const [dueTypes, setDueTypes] =
     useState<DueType[]>([])
-
   const [houses, setHouses] =
     useState<House[]>([])
-
   const [residents, setResidents] =
     useState<Resident[]>([])
-
   const [houseSearch, setHouseSearch] =
     useState('')
-
   const [streetFilter, setStreetFilter] =
     useState('all')
-
   const [selectedHouseId, setSelectedHouseId] =
     useState('')
-
   const [form, setForm] =
     useState(freshForm)
 
@@ -390,10 +546,8 @@ export default function GenerateInvoicesPage() {
       const requestedMode = modeFromQuery(
         params.get('mode')
       )
-
       const requestedHouse =
         params.get('house') ?? ''
-
       const requestedResident =
         params.get('resident') ?? ''
 
@@ -433,7 +587,6 @@ export default function GenerateInvoicesPage() {
             'id, name, amount, frequency, billing_scope'
           )
           .order('name'),
-
         supabase
           .from('houses')
           .select(`
@@ -441,6 +594,7 @@ export default function GenerateInvoicesPage() {
             address,
             house_type,
             street_id,
+            billing_responsible_resident_id,
             streets (
               name
             ),
@@ -452,7 +606,6 @@ export default function GenerateInvoicesPage() {
             )
           `)
           .order('address'),
-
         supabase
           .from('residents')
           .select(`
@@ -465,6 +618,7 @@ export default function GenerateInvoicesPage() {
               address
             )
           `)
+          .eq('is_active', true)
           .order('full_name'),
       ])
 
@@ -483,11 +637,9 @@ export default function GenerateInvoicesPage() {
       setDueTypes(
         (dueResult.data ?? []) as unknown as DueType[]
       )
-
       setHouses(
         (houseResult.data ?? []) as unknown as House[]
       )
-
       setResidents(
         (residentResult.data ?? []) as unknown as Resident[]
       )
@@ -522,28 +674,16 @@ export default function GenerateInvoicesPage() {
     (dueType) =>
       dueType.id === form.due_type_id
   )
-
   const selectedHouse = houses.find(
     (house) => house.id === selectedHouseId
   )
-
   const selectedResident = residents.find(
     (resident) =>
       resident.id === form.resident_id
   )
 
-  const resolvedStart =
-    form.start_basis === 'allocation'
-      ? selectedResident?.property_allocation_date ?? ''
-      : form.start_basis === 'move'
-        ? selectedResident?.move_in_date ?? ''
-        : form.custom_start
-
   const streets = useMemo(() => {
-    const byId = new Map<
-      string,
-      string
-    >()
+    const byId = new Map<string, string>()
 
     for (const house of houses) {
       if (
@@ -558,10 +698,7 @@ export default function GenerateInvoicesPage() {
     }
 
     return Array.from(byId.entries())
-      .map(([id, name]) => ({
-        id,
-        name,
-      }))
+      .map(([id, name]) => ({ id, name }))
       .sort((a, b) =>
         a.name.localeCompare(b.name)
       )
@@ -610,30 +747,65 @@ export default function GenerateInvoicesPage() {
         residentNames.includes(query)
       )
     })
-  }, [
-    houseSearch,
-    housesForStreet,
-  ])
+  }, [houseSearch, housesForStreet])
 
-  const housePeriod = useMemo(() => {
+  const houseFrequency =
+    selectedDueType?.billing_scope === 'house'
+      ? canonicalFrequency(
+          selectedDueType.frequency
+        )
+      : null
+
+  const allHouseholdPeriod =
+    mode === 'all-households' &&
+    selectedDueType?.billing_scope === 'house'
+      ? makeSingleHousePeriod(
+          selectedDueType.frequency,
+          form
+        )
+      : null
+
+  const selectedHouseRange =
+    mode === 'household' &&
+    selectedDueType?.billing_scope === 'house'
+      ? makeHouseRange(
+          selectedDueType.frequency,
+          form
+        )
+      : null
+
+  const householdBillingContact = useMemo(() => {
+    if (!selectedHouse) return null
+
+    const householdMembers =
+      selectedHouse.residents ?? []
+
     if (
-      !selectedDueType ||
-      selectedDueType.billing_scope !== 'house'
+      selectedHouse.billing_responsible_resident_id
     ) {
-      return null
+      const delegated = householdMembers.find(
+        (resident) =>
+          resident.id ===
+          selectedHouse.billing_responsible_resident_id
+      )
+
+      if (delegated) {
+        return delegated.full_name
+      }
     }
 
-    return makeHousePeriod(
-      selectedDueType.frequency,
-      form
+    const owner = householdMembers.find(
+      (resident) =>
+        resident.is_active &&
+        resident.relationship === 'owner'
     )
-  }, [selectedDueType, form])
 
-  const effectiveDueDate =
-    form.due_date || housePeriod?.end || ''
+    return owner?.full_name ?? null
+  }, [selectedHouse])
 
   function resetResultState() {
-    setPreview(null)
+    setResidentPreview(null)
+    setHousePreview(null)
     setSummary(null)
     setError(null)
   }
@@ -656,7 +828,6 @@ export default function GenerateInvoicesPage() {
       ...current,
       ...next,
     }))
-
     resetResultState()
   }
 
@@ -680,7 +851,21 @@ export default function GenerateInvoicesPage() {
     }
   }
 
-  function validateHouseCharge() {
+  function selectResident(residentId: string) {
+    const resident = residents.find(
+      (item) => item.id === residentId
+    )
+
+    changeForm({
+      resident_id: residentId,
+      billing_start:
+        resident?.property_allocation_date ??
+        resident?.move_in_date ??
+        '',
+    })
+  }
+
+  function validateAllHouseholds() {
     if (
       !selectedDueType ||
       selectedDueType.billing_scope !== 'house'
@@ -690,25 +875,20 @@ export default function GenerateInvoicesPage() {
       )
     }
 
-    if (!housePeriod) {
+    if (!allHouseholdPeriod) {
       throw new Error(
         'Choose a valid billing period.'
       )
     }
 
-    if (
-      mode === 'household' &&
-      !selectedHouseId
-    ) {
-      throw new Error(
-        'Select a household.'
-      )
+    if (!form.due_date) {
+      throw new Error('Choose a due date.')
     }
 
-    return housePeriod
+    return allHouseholdPeriod
   }
 
-  async function generateHouseInvoices(
+  async function generateAllHouseholds(
     event: React.FormEvent
   ) {
     event.preventDefault()
@@ -717,34 +897,19 @@ export default function GenerateInvoicesPage() {
     setSummary(null)
 
     try {
-      const period = validateHouseCharge()
-
-      const rpcName =
-        mode === 'household'
-          ? 'generate_single_house_invoice'
-          : 'generate_house_invoices'
-
-      const common = {
-        p_due_type: selectedDueType!.id,
-        p_period_start: period.start,
-        p_period_end: period.end,
-        p_due_date: effectiveDueDate || null,
-      }
-
-      const args =
-        mode === 'household'
-          ? {
-              p_house: selectedHouseId,
-              ...common,
-            }
-          : common
+      const period = validateAllHouseholds()
 
       const {
         data,
         error: generateError,
       } = await supabase.rpc(
-        rpcName,
-        args
+        'generate_house_invoices',
+        {
+          p_due_type: selectedDueType!.id,
+          p_period_start: period.start,
+          p_period_end: period.end,
+          p_due_date: form.due_date,
+        }
       )
 
       if (generateError) {
@@ -764,6 +929,116 @@ export default function GenerateInvoicesPage() {
     }
   }
 
+  function validateSingleHousehold() {
+    if (!selectedHouse) {
+      throw new Error('Select a household.')
+    }
+
+    if (
+      !selectedDueType ||
+      selectedDueType.billing_scope !== 'house'
+    ) {
+      throw new Error(
+        'Select a Household / Property due type.'
+      )
+    }
+
+    if (!selectedHouseRange) {
+      throw new Error(
+        'Choose a valid From and To billing period.'
+      )
+    }
+
+    if (!form.due_date) {
+      throw new Error('Choose a due date.')
+    }
+
+    return {
+      houseId: selectedHouse.id,
+      dueTypeId: selectedDueType.id,
+      start: selectedHouseRange.start,
+      end: selectedHouseRange.end,
+      dueDate: form.due_date,
+    }
+  }
+
+  async function previewSingleHousehold() {
+    setLoading(true)
+    setError(null)
+    setSummary(null)
+
+    try {
+      const values = validateSingleHousehold()
+
+      const {
+        data,
+        error: previewError,
+      } = await supabase.rpc(
+        'preview_single_house_invoices_range',
+        {
+          p_house: values.houseId,
+          p_due_type: values.dueTypeId,
+          p_start: values.start,
+          p_end: values.end,
+          p_due_date: values.dueDate,
+        }
+      )
+
+      if (previewError) {
+        throw previewError
+      }
+
+      setHousePreview(data as HousePreview)
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Could not preview household invoices.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function generateSingleHousehold() {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const values = validateSingleHousehold()
+
+      const {
+        data,
+        error: generateError,
+      } = await supabase.rpc(
+        'generate_single_house_invoices_range',
+        {
+          p_house: values.houseId,
+          p_due_type: values.dueTypeId,
+          p_start: values.start,
+          p_end: values.end,
+          p_due_date: values.dueDate,
+        }
+      )
+
+      if (generateError) {
+        throw generateError
+      }
+
+      setSummary(data as Summary)
+      setHousePreview(null)
+      router.refresh()
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : 'Could not generate household invoices.'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function validateResidentForm() {
     if (
       !selectedDueType ||
@@ -775,46 +1050,37 @@ export default function GenerateInvoicesPage() {
     }
 
     if (!selectedResident) {
-      throw new Error(
-        'Select a resident.'
-      )
+      throw new Error('Select a resident.')
     }
 
-    if (!resolvedStart) {
-      if (form.start_basis === 'allocation') {
-        throw new Error(
-          'This resident does not have a Property Allocation Date. Choose Move-in Date or Custom Date.'
-        )
-      }
-
-      if (form.start_basis === 'move') {
-        throw new Error(
-          'This resident does not have a Move-in Date. Choose Property Allocation Date or Custom Date.'
-        )
-      }
-
+    if (!form.billing_start) {
       throw new Error(
-        'Choose a billing start date.'
+        'Choose the Billing Start date.'
       )
     }
 
     if (!form.end_date) {
       throw new Error(
-        'Choose a billing end date.'
+        'Choose the Billing End date.'
       )
     }
 
-    if (resolvedStart > form.end_date) {
+    if (form.billing_start > form.end_date) {
       throw new Error(
-        'The billing end date cannot be before the start date.'
+        'The Billing End date cannot be before the Billing Start date.'
       )
+    }
+
+    if (!form.due_date) {
+      throw new Error('Choose a Due Date.')
     }
 
     return {
       residentId: selectedResident.id,
       dueTypeId: selectedDueType.id,
-      start: resolvedStart,
+      start: form.billing_start,
       end: form.end_date,
+      dueDate: form.due_date,
     }
   }
 
@@ -836,6 +1102,7 @@ export default function GenerateInvoicesPage() {
           p_due_type: values.dueTypeId,
           p_start: values.start,
           p_end: values.end,
+          p_due_date: values.dueDate,
         }
       )
 
@@ -843,7 +1110,9 @@ export default function GenerateInvoicesPage() {
         throw previewError
       }
 
-      setPreview(data as Preview)
+      setResidentPreview(
+        data as ResidentPreview
+      )
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -872,6 +1141,7 @@ export default function GenerateInvoicesPage() {
           p_due_type: values.dueTypeId,
           p_start: values.start,
           p_end: values.end,
+          p_due_date: values.dueDate,
         }
       )
 
@@ -880,7 +1150,7 @@ export default function GenerateInvoicesPage() {
       }
 
       setSummary(data as Summary)
-      setPreview(null)
+      setResidentPreview(null)
       router.refresh()
     } catch (caughtError) {
       setError(
@@ -893,12 +1163,14 @@ export default function GenerateInvoicesPage() {
     }
   }
 
-  const houseFrequency =
-    selectedDueType?.billing_scope === 'house'
-      ? canonicalFrequency(
-          selectedDueType.frequency
-        )
-      : null
+  function resetBillingMode() {
+    setMode(null)
+    setSelectedHouseId('')
+    setHouseSearch('')
+    setStreetFilter('all')
+    setForm(freshForm())
+    resetResultState()
+  }
 
   return (
     <div className="page-wrap max-w-4xl">
@@ -967,7 +1239,7 @@ export default function GenerateInvoicesPage() {
 
             <p className="text-sm text-gray-600 mt-2">
               Filter by street, select one house,
-              and apply only the applicable due.
+              and generate one or several periods.
             </p>
           </button>
 
@@ -997,14 +1269,7 @@ export default function GenerateInvoicesPage() {
           <button
             type="button"
             className="action secondary mb-4"
-            onClick={() => {
-              setMode(null)
-              setSelectedHouseId('')
-              setHouseSearch('')
-              setStreetFilter('all')
-              setForm(freshForm())
-              resetResultState()
-            }}
+            onClick={resetBillingMode}
           >
             ← Choose another billing type
           </button>
@@ -1018,9 +1283,9 @@ export default function GenerateInvoicesPage() {
 
                 <p className="mt-1 text-gray-600">
                   One invoice will be created per
-                  house. Residents sharing a house
-                  will not receive duplicate
-                  household invoices.
+                  house for the selected period.
+                  Residents sharing a house will not
+                  receive duplicate household invoices.
                 </p>
               </div>
             )}
@@ -1033,8 +1298,8 @@ export default function GenerateInvoicesPage() {
                   </strong>
 
                   <p className="mt-1 text-gray-600">
-                    Filter the estate first, then
-                    select one property. The invoice
+                    Filter the &apos;street&apos; first,
+                    then select one property. The invoice
                     belongs to the house, not to every
                     resident living there.
                   </p>
@@ -1206,16 +1471,25 @@ export default function GenerateInvoicesPage() {
                       {selectedHouse.house_type ??
                         'House type not set'}
                     </p>
+
+                    <p className="text-xs text-gray-500 mt-2">
+                      <strong>Billing contact:</strong>{' '}
+                      {householdBillingContact ??
+                        'No active Home Owner or designated billing contact found'}
+                    </p>
+
+                    <p className="text-xs text-gray-500 mt-1">
+                      The invoice remains attached to this
+                      house. The billing contact is the person
+                      who receives and manages the household bill.
+                    </p>
                   </div>
                 )}
               </div>
             )}
 
             {mode !== 'resident' && (
-              <form
-                onSubmit={generateHouseInvoices}
-                className="space-y-5"
-              >
+              <div className="space-y-5">
                 <div>
                   <label className="block text-sm font-medium mb-1">
                     Household Due Type *
@@ -1270,7 +1544,8 @@ export default function GenerateInvoicesPage() {
                   </div>
                 )}
 
-                {selectedDueType && (
+                {selectedDueType &&
+                  mode === 'all-households' && (
                   <div className="space-y-4">
                     <div>
                       <span className="block text-sm font-medium mb-1">
@@ -1278,9 +1553,9 @@ export default function GenerateInvoicesPage() {
                       </span>
 
                       <p className="text-xs text-gray-500">
-                        Verdant generates the period
-                        label automatically. Admins do
-                        not type period labels manually.
+                        This estate-wide action creates one
+                        period at a time. Period labels are
+                        generated automatically.
                       </p>
                     </div>
 
@@ -1305,9 +1580,7 @@ export default function GenerateInvoicesPage() {
                               (month, index) => (
                                 <option
                                   key={month}
-                                  value={String(
-                                    index + 1
-                                  )}
+                                  value={String(index + 1)}
                                 >
                                   {month}
                                 </option>
@@ -1470,24 +1743,341 @@ export default function GenerateInvoicesPage() {
                         </div>
                       </div>
                     )}
+
+                    {allHouseholdPeriod && (
+                      <div className="rounded-lg border bg-gray-50 p-4 text-sm">
+                        <span className="text-gray-500">
+                          Generated period
+                        </span>
+
+                        <strong className="block mt-1 text-base">
+                          {allHouseholdPeriod.label}
+                        </strong>
+
+                        <p className="text-xs text-gray-500 mt-1">
+                          {displayDate(allHouseholdPeriod.start)}
+                          {' → '}
+                          {displayDate(allHouseholdPeriod.end)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {housePeriod && (
-                  <div className="rounded-lg border bg-gray-50 p-4 text-sm">
-                    <span className="text-gray-500">
-                      Generated period
-                    </span>
+                {selectedDueType &&
+                  mode === 'household' && (
+                  <div className="space-y-4">
+                    <div>
+                      <span className="block text-sm font-medium mb-1">
+                        Billing Period: From and To *
+                      </span>
 
-                    <strong className="block mt-1 text-base">
-                      {housePeriod.label}
-                    </strong>
+                      <p className="text-xs text-gray-500">
+                        Verdant generates every period between
+                        From and To according to this due type&apos;s
+                        frequency. For example, January 2026 to
+                        September 2026 creates nine monthly invoices.
+                      </p>
+                    </div>
 
-                    <p className="text-xs text-gray-500 mt-1">
-                      {displayDate(housePeriod.start)}
-                      {' → '}
-                      {displayDate(housePeriod.end)}
-                    </p>
+                    {houseFrequency === 'monthly' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="rounded-lg border p-4 space-y-3">
+                          <strong className="text-sm">From</strong>
+
+                          <div>
+                            <label className="block text-xs font-medium mb-1">
+                              Month
+                            </label>
+                            <select
+                              className="w-full border rounded-lg px-3 py-2"
+                              value={form.range_from_month}
+                              onChange={(event) =>
+                                changeForm({
+                                  range_from_month:
+                                    event.target.value,
+                                })
+                              }
+                            >
+                              {MONTHS.map((month, index) => (
+                                <option
+                                  key={month}
+                                  value={String(index + 1)}
+                                >
+                                  {month}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium mb-1">
+                              Year
+                            </label>
+                            <select
+                              className="w-full border rounded-lg px-3 py-2"
+                              value={form.range_from_year}
+                              onChange={(event) =>
+                                changeForm({
+                                  range_from_year:
+                                    event.target.value,
+                                })
+                              }
+                            >
+                              {YEARS.map((year) => (
+                                <option key={year} value={year}>
+                                  {year}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border p-4 space-y-3">
+                          <strong className="text-sm">To</strong>
+
+                          <div>
+                            <label className="block text-xs font-medium mb-1">
+                              Month
+                            </label>
+                            <select
+                              className="w-full border rounded-lg px-3 py-2"
+                              value={form.range_to_month}
+                              onChange={(event) =>
+                                changeForm({
+                                  range_to_month:
+                                    event.target.value,
+                                })
+                              }
+                            >
+                              {MONTHS.map((month, index) => (
+                                <option
+                                  key={month}
+                                  value={String(index + 1)}
+                                >
+                                  {month}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium mb-1">
+                              Year
+                            </label>
+                            <select
+                              className="w-full border rounded-lg px-3 py-2"
+                              value={form.range_to_year}
+                              onChange={(event) =>
+                                changeForm({
+                                  range_to_year:
+                                    event.target.value,
+                                })
+                              }
+                            >
+                              {YEARS.map((year) => (
+                                <option key={year} value={year}>
+                                  {year}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {houseFrequency === 'quarterly' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="rounded-lg border p-4 space-y-3">
+                          <strong className="text-sm">From</strong>
+
+                          <select
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.range_from_quarter}
+                            onChange={(event) =>
+                              changeForm({
+                                range_from_quarter:
+                                  event.target.value,
+                              })
+                            }
+                          >
+                            {QUARTERS.map((quarter) => (
+                              <option
+                                key={quarter.value}
+                                value={quarter.value}
+                              >
+                                {quarter.label}
+                              </option>
+                            ))}
+                          </select>
+
+                          <select
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.range_from_year}
+                            onChange={(event) =>
+                              changeForm({
+                                range_from_year:
+                                  event.target.value,
+                              })
+                            }
+                          >
+                            {YEARS.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="rounded-lg border p-4 space-y-3">
+                          <strong className="text-sm">To</strong>
+
+                          <select
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.range_to_quarter}
+                            onChange={(event) =>
+                              changeForm({
+                                range_to_quarter:
+                                  event.target.value,
+                              })
+                            }
+                          >
+                            {QUARTERS.map((quarter) => (
+                              <option
+                                key={quarter.value}
+                                value={quarter.value}
+                              >
+                                {quarter.label}
+                              </option>
+                            ))}
+                          </select>
+
+                          <select
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.range_to_year}
+                            onChange={(event) =>
+                              changeForm({
+                                range_to_year:
+                                  event.target.value,
+                              })
+                            }
+                          >
+                            {YEARS.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {houseFrequency === 'yearly' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            From Year
+                          </label>
+                          <select
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.range_from_year}
+                            onChange={(event) =>
+                              changeForm({
+                                range_from_year:
+                                  event.target.value,
+                              })
+                            }
+                          >
+                            {YEARS.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            To Year
+                          </label>
+                          <select
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.range_to_year}
+                            onChange={(event) =>
+                              changeForm({
+                                range_to_year:
+                                  event.target.value,
+                              })
+                            }
+                          >
+                            {YEARS.map((year) => (
+                              <option key={year} value={year}>
+                                {year}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {(houseFrequency === 'one-time' ||
+                      houseFrequency === 'custom') && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Period Start *
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.one_time_start}
+                            onChange={(event) =>
+                              changeForm({
+                                one_time_start:
+                                  event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium mb-1">
+                            Period End *
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            className="w-full border rounded-lg px-3 py-2"
+                            value={form.one_time_end}
+                            onChange={(event) =>
+                              changeForm({
+                                one_time_end:
+                                  event.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedHouseRange && (
+                      <div className="rounded-lg border bg-gray-50 p-4 text-sm">
+                        <span className="text-gray-500">
+                          Selected range
+                        </span>
+
+                        <strong className="block mt-1 text-base">
+                          {selectedHouseRange.label}
+                        </strong>
+
+                        <p className="text-xs text-gray-500 mt-1">
+                          {displayDate(selectedHouseRange.start)}
+                          {' → '}
+                          {displayDate(selectedHouseRange.end)}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1500,7 +2090,7 @@ export default function GenerateInvoicesPage() {
                     type="date"
                     required
                     className="w-full border rounded-lg px-3 py-2"
-                    value={effectiveDueDate}
+                    value={form.due_date}
                     onChange={(event) =>
                       changeForm({
                         due_date:
@@ -1510,113 +2100,260 @@ export default function GenerateInvoicesPage() {
                   />
 
                   <p className="text-xs text-gray-500 mt-1">
-                    Defaults to the final day of the
-                    selected billing period. You can
-                    choose another date if needed.
+                    For a multi-period household range,
+                    this same due date is applied to all
+                    newly generated invoices in the range.
                   </p>
                 </div>
 
-                {selectedDueType &&
-                  housePeriod &&
-                  (mode !== 'household' ||
-                    selectedHouse) && (
-                    <div className="rounded-xl border p-4">
-                      <span className="eyebrow">
-                        Preview
-                      </span>
+                {mode === 'all-households' &&
+                  selectedDueType &&
+                  allHouseholdPeriod &&
+                  form.due_date && (
+                  <div className="rounded-xl border p-4">
+                    <span className="eyebrow">
+                      Preview
+                    </span>
 
-                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-sm">
-                        <div>
-                          <dt className="text-gray-500">
-                            Target
-                          </dt>
-                          <dd className="font-semibold mt-1">
-                            {mode === 'household'
-                              ? selectedHouse?.address
-                              : `All ${houses.length} households`}
-                          </dd>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-sm">
+                      <div>
+                        <dt className="text-gray-500">
+                          Target
+                        </dt>
+                        <dd className="font-semibold mt-1">
+                          All {houses.length} households
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-gray-500">
+                          Charge
+                        </dt>
+                        <dd className="font-semibold mt-1">
+                          {selectedDueType.name}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-gray-500">
+                          Period
+                        </dt>
+                        <dd className="font-semibold mt-1">
+                          {allHouseholdPeriod.label}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-gray-500">
+                          Due date
+                        </dt>
+                        <dd className="font-semibold mt-1">
+                          {displayDate(form.due_date)}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-gray-500">
+                          Amount per household
+                        </dt>
+                        <dd className="font-semibold mt-1">
+                          {naira(
+                            Number(
+                              selectedDueType.amount
+                            )
+                          )}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-gray-500">
+                          Maximum new billing
+                        </dt>
+                        <dd className="font-semibold mt-1">
+                          {naira(
+                            Number(
+                              selectedDueType.amount
+                            ) * houses.length
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  </div>
+                )}
+
+                {mode === 'all-households' && (
+                  <form
+                    onSubmit={generateAllHouseholds}
+                  >
+                    <button
+                      type="submit"
+                      disabled={
+                        loading ||
+                        !allHouseholdPeriod ||
+                        !form.due_date
+                      }
+                      className="action disabled:opacity-50"
+                    >
+                      {loading
+                        ? 'Generating...'
+                        : 'Generate Due for All Households'}
+                    </button>
+                  </form>
+                )}
+
+                {mode === 'household' && (
+                  <div className="space-y-4">
+                    <button
+                      type="button"
+                      disabled={
+                        loading ||
+                        !selectedHouse ||
+                        !selectedHouseRange ||
+                        !form.due_date
+                      }
+                      onClick={previewSingleHousehold}
+                      className="action secondary disabled:opacity-50"
+                    >
+                      {loading
+                        ? 'Preparing...'
+                        : 'Preview Household Invoices'}
+                    </button>
+
+                    {housePreview && (
+                      <div className="border rounded-xl overflow-hidden">
+                        <div className="p-4 border-b bg-gray-50">
+                          <h2 className="font-semibold">
+                            Household Invoice Preview
+                          </h2>
+
+                          <p className="text-sm text-gray-600 mt-1">
+                            {housePreview.address}
+                            {' · '}
+                            {housePreview.due_type_name}
+                          </p>
+
+                          <p className="text-xs text-gray-500 mt-1">
+                            Billing contact:{' '}
+                            {housePreview.billing_contact_name ??
+                              'Not assigned'}
+                          </p>
                         </div>
 
-                        <div>
-                          <dt className="text-gray-500">
-                            Charge
-                          </dt>
-                          <dd className="font-semibold mt-1">
-                            {selectedDueType.name}
-                          </dd>
+                        <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr>
+                                <th className="p-3 text-left">
+                                  Period
+                                </th>
+                                <th className="p-3 text-left">
+                                  Due date
+                                </th>
+                                <th className="p-3 text-right">
+                                  Amount
+                                </th>
+                                <th className="p-3 text-left">
+                                  Result
+                                </th>
+                              </tr>
+                            </thead>
+
+                            <tbody>
+                              {housePreview.periods.map(
+                                (period) => (
+                                  <tr
+                                    key={`${period.period_start}-${period.period_end}`}
+                                    className="border-t"
+                                  >
+                                    <td className="p-3">
+                                      {period.period_label}
+                                    </td>
+                                    <td className="p-3">
+                                      {displayDate(
+                                        period.due_date
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-right">
+                                      {naira(
+                                        Number(
+                                          period.amount
+                                        )
+                                      )}
+                                    </td>
+                                    <td className="p-3">
+                                      {period.already_exists
+                                        ? 'Already invoiced — will skip'
+                                        : 'Will create'}
+                                    </td>
+                                  </tr>
+                                )
+                              )}
+                            </tbody>
+                          </table>
                         </div>
 
-                        <div>
-                          <dt className="text-gray-500">
-                            Period
-                          </dt>
-                          <dd className="font-semibold mt-1">
-                            {housePeriod.label}
-                          </dd>
-                        </div>
+                        <div className="p-4 border-t bg-gray-50 text-sm">
+                          <p>
+                            <strong>
+                              {housePreview.create_count}
+                            </strong>{' '}
+                            new invoice
+                            {housePreview.create_count === 1
+                              ? ''
+                              : 's'}
+                          </p>
 
-                        <div>
-                          <dt className="text-gray-500">
-                            Due date
-                          </dt>
-                          <dd className="font-semibold mt-1">
-                            {displayDate(
-                              effectiveDueDate
-                            )}
-                          </dd>
-                        </div>
+                          {housePreview.duplicate_count > 0 && (
+                            <p>
+                              <strong>
+                                {housePreview.duplicate_count}
+                              </strong>{' '}
+                              existing period
+                              {housePreview.duplicate_count === 1
+                                ? ''
+                                : 's'}{' '}
+                              will be skipped.
+                            </p>
+                          )}
 
-                        <div>
-                          <dt className="text-gray-500">
-                            Amount per household
-                          </dt>
-                          <dd className="font-semibold mt-1">
-                            {naira(
-                              Number(
-                                selectedDueType.amount
-                              )
-                            )}
-                          </dd>
-                        </div>
-
-                        {mode === 'all-households' && (
-                          <div>
-                            <dt className="text-gray-500">
-                              Maximum new billing
-                            </dt>
-                            <dd className="font-semibold mt-1">
+                          <p className="mt-2 text-base">
+                            Total new billing:{' '}
+                            <strong>
                               {naira(
                                 Number(
-                                  selectedDueType.amount
-                                ) * houses.length
+                                  housePreview.total_to_create
+                                )
                               )}
-                            </dd>
-                          </div>
-                        )}
-                      </dl>
-                    </div>
-                  )}
+                            </strong>
+                          </p>
+                        </div>
 
-                <button
-                  type="submit"
-                  disabled={
-                    loading ||
-                    !housePeriod ||
-                    (mode === 'household' &&
-                      !selectedHouseId)
-                  }
-                  className="action disabled:opacity-50"
-                >
-                  {loading
-                    ? 'Generating...'
-                    : mode === 'household'
-                      ? `Generate Due for ${
-                          selectedHouse?.address ??
-                          'Selected Household'
-                        }`
-                      : 'Generate Due for All Households'}
-                </button>
-              </form>
+                        <div className="p-4">
+                          <button
+                            type="button"
+                            disabled={
+                              loading ||
+                              housePreview.create_count === 0
+                            }
+                            onClick={
+                              generateSingleHousehold
+                            }
+                            className="action disabled:opacity-50"
+                          >
+                            {loading
+                              ? 'Generating...'
+                              : `Generate ${housePreview.create_count} Invoice${
+                                  housePreview.create_count === 1
+                                    ? ''
+                                    : 's'
+                                }`}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             {mode === 'resident' && (
@@ -1643,10 +2380,9 @@ export default function GenerateInvoicesPage() {
                     className="w-full border rounded-lg px-3 py-2"
                     value={form.resident_id}
                     onChange={(event) =>
-                      changeForm({
-                        resident_id:
-                          event.target.value,
-                      })
+                      selectResident(
+                        event.target.value
+                      )
                     }
                   >
                     <option value="">
@@ -1734,65 +2470,72 @@ export default function GenerateInvoicesPage() {
 
                 <div>
                   <label className="block text-sm font-medium mb-1">
-                    Start Billing From *
-                  </label>
-
-                  <select
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={form.start_basis}
-                    onChange={(event) =>
-                      changeForm({
-                        start_basis:
-                          event.target.value,
-                      })
-                    }
-                  >
-                    <option value="allocation">
-                      Property Allocation Date
-                    </option>
-
-                    <option value="move">
-                      Move-in Date
-                    </option>
-
-                    <option value="custom">
-                      Custom Date
-                    </option>
-                  </select>
-                </div>
-
-                {form.start_basis === 'custom' && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Custom Start Date *
-                    </label>
-
-                    <input
-                      type="date"
-                      required
-                      className="w-full border rounded-lg px-3 py-2"
-                      value={form.custom_start}
-                      onChange={(event) =>
-                        changeForm({
-                          custom_start:
-                            event.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Billing Start
+                    Billing Start *
                   </label>
 
                   <input
                     type="date"
-                    readOnly
-                    className="w-full border rounded-lg px-3 py-2 bg-gray-50"
-                    value={resolvedStart}
+                    required
+                    className="w-full border rounded-lg px-3 py-2"
+                    value={form.billing_start}
+                    onChange={(event) =>
+                      changeForm({
+                        billing_start:
+                          event.target.value,
+                      })
+                    }
                   />
+
+                  {selectedResident && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <button
+                        type="button"
+                        className="action secondary"
+                        style={{
+                          padding: '.45rem .75rem',
+                          minHeight: 36,
+                          fontSize: '.75rem',
+                        }}
+                        disabled={
+                          !selectedResident.property_allocation_date
+                        }
+                        onClick={() =>
+                          changeForm({
+                            billing_start:
+                              selectedResident.property_allocation_date ?? '',
+                          })
+                        }
+                      >
+                        Use allocation date
+                      </button>
+
+                      <button
+                        type="button"
+                        className="action secondary"
+                        style={{
+                          padding: '.45rem .75rem',
+                          minHeight: 36,
+                          fontSize: '.75rem',
+                        }}
+                        disabled={
+                          !selectedResident.move_in_date
+                        }
+                        onClick={() =>
+                          changeForm({
+                            billing_start:
+                              selectedResident.move_in_date ?? '',
+                          })
+                        }
+                      >
+                        Use move-in date
+                      </button>
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-500 mt-2">
+                    You can select any valid start date
+                    directly from the calendar.
+                  </p>
                 </div>
 
                 <div>
@@ -1812,6 +2555,31 @@ export default function GenerateInvoicesPage() {
                       })
                     }
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    Due Date *
+                  </label>
+
+                  <input
+                    type="date"
+                    required
+                    className="w-full border rounded-lg px-3 py-2"
+                    value={form.due_date}
+                    onChange={(event) =>
+                      changeForm({
+                        due_date:
+                          event.target.value,
+                      })
+                    }
+                  />
+
+                  <p className="text-xs text-gray-500 mt-1">
+                    The selected due date is applied to
+                    each new personal invoice created from
+                    this billing range.
+                  </p>
                 </div>
 
                 {selectedDueType && (
@@ -1855,7 +2623,7 @@ export default function GenerateInvoicesPage() {
                     : 'Preview Invoices'}
                 </button>
 
-                {preview && (
+                {residentPreview && (
                   <div className="border rounded-xl overflow-hidden">
                     <div className="p-4 border-b bg-gray-50">
                       <h2 className="font-semibold">
@@ -1863,24 +2631,25 @@ export default function GenerateInvoicesPage() {
                       </h2>
 
                       <p className="text-sm text-gray-600 mt-1">
-                        {preview.resident_name}
+                        {residentPreview.resident_name}
                         {' · '}
-                        {preview.due_type_name}
+                        {residentPreview.due_type_name}
                       </p>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr>
                             <th className="p-3 text-left">
                               Period
                             </th>
-
+                            <th className="p-3 text-left">
+                              Due date
+                            </th>
                             <th className="p-3 text-right">
                               Amount
                             </th>
-
                             <th className="p-3 text-left">
                               Result
                             </th>
@@ -1888,7 +2657,7 @@ export default function GenerateInvoicesPage() {
                         </thead>
 
                         <tbody>
-                          {preview.periods.map(
+                          {residentPreview.periods.map(
                             (period) => (
                               <tr
                                 key={`${period.period_start}-${period.period_end}`}
@@ -1897,7 +2666,11 @@ export default function GenerateInvoicesPage() {
                                 <td className="p-3">
                                   {period.period_label}
                                 </td>
-
+                                <td className="p-3">
+                                  {displayDate(
+                                    period.due_date
+                                  )}
+                                </td>
                                 <td className="p-3 text-right">
                                   {naira(
                                     Number(
@@ -1905,7 +2678,6 @@ export default function GenerateInvoicesPage() {
                                     )
                                   )}
                                 </td>
-
                                 <td className="p-3">
                                   {period.already_exists
                                     ? 'Already invoiced — will skip'
@@ -1921,21 +2693,21 @@ export default function GenerateInvoicesPage() {
                     <div className="p-4 border-t bg-gray-50 text-sm">
                       <p>
                         <strong>
-                          {preview.create_count}
+                          {residentPreview.create_count}
                         </strong>{' '}
                         new invoice
-                        {preview.create_count === 1
+                        {residentPreview.create_count === 1
                           ? ''
                           : 's'}
                       </p>
 
-                      {preview.duplicate_count > 0 && (
+                      {residentPreview.duplicate_count > 0 && (
                         <p>
                           <strong>
-                            {preview.duplicate_count}
+                            {residentPreview.duplicate_count}
                           </strong>{' '}
                           existing period
-                          {preview.duplicate_count === 1
+                          {residentPreview.duplicate_count === 1
                             ? ''
                             : 's'}{' '}
                           will be skipped.
@@ -1947,7 +2719,7 @@ export default function GenerateInvoicesPage() {
                         <strong>
                           {naira(
                             Number(
-                              preview.total_to_create
+                              residentPreview.total_to_create
                             )
                           )}
                         </strong>
@@ -1959,7 +2731,7 @@ export default function GenerateInvoicesPage() {
                         type="button"
                         disabled={
                           loading ||
-                          preview.create_count === 0
+                          residentPreview.create_count === 0
                         }
                         onClick={
                           generateResidentInvoices
@@ -1968,8 +2740,8 @@ export default function GenerateInvoicesPage() {
                       >
                         {loading
                           ? 'Generating...'
-                          : `Generate ${preview.create_count} Invoice${
-                              preview.create_count === 1
+                          : `Generate ${residentPreview.create_count} Invoice${
+                              residentPreview.create_count === 1
                                 ? ''
                                 : 's'
                             }`}
