@@ -1884,3 +1884,83 @@ html[data-theme=dark] .text-green-800{color:#c0e8cb}
 input:not([type=checkbox]):not([type=radio]),select,textarea{background-color:var(--surface);color:var(--ink);border-color:var(--line)}
 input[type=checkbox],input[type=radio]{min-height:0;accent-color:var(--moss)}
 thead{background:var(--canvas);color:var(--muted)}th{font-weight:700;font-size:.75rem}td,th{vertical-align:middle}tbody tr:hover{background:var(--canvas)}
+
+
+
+/* =========================================================
+   BILLING / PANEL TEXT CONTRAST FIX
+   ========================================================= */
+
+/* Normal text links inside a panel header */
+.panel-head a:not(.action) {
+  color: var(--moss);
+}
+
+/* Primary action links must keep button contrast */
+.panel-head a.action {
+  color: #ffffff !important;
+}
+
+/* Secondary buttons remain readable */
+.panel-head a.action.secondary {
+  color: var(--ink) !important;
+}
+
+/* Lime buttons always use dark text */
+.panel-head a.action.lime {
+  color: #183f32 !important;
+}
+
+/* Make panel headings and important content clearer */
+.panel-head h2,
+.panel-body strong,
+.invoice-row strong {
+  color: var(--ink);
+}
+
+/* Improve supporting text readability */
+.panel-head p,
+.panel-body p,
+.invoice-row span:not(.pill) {
+  color: var(--muted);
+}
+
+/* Stronger contrast specifically in dark mode */
+html[data-theme="dark"] {
+  --ink: #f4f8f4;
+  --muted: #c7d4cb;
+  --line: #465c4e;
+}
+
+/* Dark-mode primary action */
+html[data-theme="dark"] .panel-head a.action {
+  background: #b9e993;
+  border-color: #b9e993;
+  color: #183f32 !important;
+}
+
+/* Dark-mode secondary action */
+html[data-theme="dark"] .panel-head a.action.secondary {
+  background: transparent;
+  border-color: #5b7163;
+  color: #f4f8f4 !important;
+}
+
+/* Improve muted invoice/detail text in dark mode */
+html[data-theme="dark"] .invoice-row span:not(.pill),
+html[data-theme="dark"] .panel-body p,
+html[data-theme="dark"] .panel-head p,
+html[data-theme="dark"] .text-gray-500,
+html[data-theme="dark"] .text-gray-600 {
+  color: #c7d4cb !important;
+}
+
+/* Keep outstanding amounts prominent */
+html[data-theme="dark"] .invoice-row strong {
+  color: #f4f8f4;
+}
+
+/* Clearer panel borders in dark mode */
+html[data-theme="dark"] .panel {
+  border-color: #465c4e;
+}
