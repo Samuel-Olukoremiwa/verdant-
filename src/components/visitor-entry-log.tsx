@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { formatDateTimeGb } from '@/lib/date-format'
 
 export async function VisitorEntryLog() {
   const db =
@@ -83,14 +84,8 @@ export async function VisitorEntryLog() {
                   </p>
 
                   <small>
-                    {new Date(
+                    {formatDateTimeGb(
                       visitor.redeemed_at
-                    ).toLocaleString(
-                      'en-GB',
-                      {
-                        timeZone:
-                          'Africa/Lagos',
-                      }
                     )}{' '}
                     WAT
                   </small>

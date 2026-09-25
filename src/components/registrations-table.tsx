@@ -1,5 +1,7 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
+
 import { useState } from 'react'
 import {
   formatDateTimeGb,
@@ -448,9 +450,8 @@ function RequestRow({
             <label>
               Move-in date *
 
-              <input
-                type="date"
-                required
+              <DateField
+required
                 className="block border rounded-lg p-2"
                 value={moveIn}
                 onChange={(event) =>
@@ -465,9 +466,8 @@ function RequestRow({
             <label>
               Property allocation date *
 
-              <input
-                type="date"
-                required
+              <DateField
+required
                 className="block border rounded-lg p-2"
                 value={
                   allocation

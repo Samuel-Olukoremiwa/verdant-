@@ -1,5 +1,7 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
+
 import { SiteTools } from '@/components/site-tools'
 import Link from 'next/link'
 import {
@@ -686,10 +688,9 @@ export default function RegisterPage() {
               <label>
                 Move-in Date *
 
-                <input
+                <DateField
                   required
-                  type="date"
-                  value={
+value={
                     form.move_in_date
                   }
                   onChange={(event) =>
@@ -704,10 +705,9 @@ export default function RegisterPage() {
               <label>
                 Property Allocation Date *
 
-                <input
+                <DateField
                   required
-                  type="date"
-                  value={
+value={
                     form
                       .property_allocation_date
                   }

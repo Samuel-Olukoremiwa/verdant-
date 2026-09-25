@@ -1,3 +1,4 @@
+import { formatDateTimeGb } from '@/lib/date-format'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { notFound } from 'next/navigation'
@@ -73,7 +74,7 @@ export default async function ReceiptPage({
             <p className="text-gray-500">Date paid</p>
             <p className="font-medium">
               {payment.paid_at
-                ? new Date(payment.paid_at).toLocaleString()
+                ? formatDateTimeGb(payment.paid_at)
                 : '—'}
             </p>
           </div>

@@ -1,5 +1,7 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -121,10 +123,9 @@ export default function NewExpensePage() {
 
         <div>
           <label className="block text-sm font-medium mb-1">Date *</label>
-          <input
+          <DateField
             required
-            type="date"
-            className="w-full border rounded-lg px-3 py-2"
+className="w-full border rounded-lg px-3 py-2"
             value={form.expense_date}
             onChange={(e) => update('expense_date', e.target.value)}
           />

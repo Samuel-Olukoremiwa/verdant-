@@ -1,5 +1,9 @@
 'use client'
 
+import { formatDateGb } from '@/lib/date-format'
+
+import { DateField } from '@/components/date-field'
+
 import {
   useEffect,
   useState,
@@ -493,9 +497,8 @@ export default function ReportsPage() {
               From
             </label>
 
-            <input
-              type="date"
-              disabled={
+            <DateField
+disabled={
                 period !==
                 'custom'
               }
@@ -520,9 +523,8 @@ export default function ReportsPage() {
               To
             </label>
 
-            <input
-              type="date"
-              disabled={
+            <DateField
+disabled={
                 period !==
                 'custom'
               }
@@ -560,9 +562,9 @@ export default function ReportsPage() {
             <h2>
               Income Statement
               {' · '}
-              {from}
+              {formatDateGb(from)}
               {' to '}
-              {to}
+              {formatDateGb(to)}
             </h2>
           </div>
 
@@ -659,9 +661,7 @@ export default function ReportsPage() {
                             {row.kind ===
                               'expense' && (
                               <span className="block text-xs font-normal text-gray-500">
-                                {
-                                  row.date
-                                }
+                                {formatDateGb(String(row.date))}
                                 {' · '}
                                 {
                                   row.category

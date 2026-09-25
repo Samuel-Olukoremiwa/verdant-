@@ -1,5 +1,7 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
+
 import Link from 'next/link'
 import {
   useEffect,
@@ -1709,9 +1711,8 @@ export default function GenerateInvoicesPage() {
                             Period Start *
                           </label>
 
-                          <input
-                            type="date"
-                            required
+                          <DateField
+required
                             className="w-full border rounded-lg px-3 py-2"
                             value={form.one_time_start}
                             onChange={(event) =>
@@ -1728,9 +1729,8 @@ export default function GenerateInvoicesPage() {
                             Period End *
                           </label>
 
-                          <input
-                            type="date"
-                            required
+                          <DateField
+required
                             className="w-full border rounded-lg px-3 py-2"
                             value={form.one_time_end}
                             onChange={(event) =>
@@ -2027,9 +2027,8 @@ export default function GenerateInvoicesPage() {
                           <label className="block text-sm font-medium mb-1">
                             Period Start *
                           </label>
-                          <input
-                            type="date"
-                            required
+                          <DateField
+required
                             className="w-full border rounded-lg px-3 py-2"
                             value={form.one_time_start}
                             onChange={(event) =>
@@ -2045,9 +2044,8 @@ export default function GenerateInvoicesPage() {
                           <label className="block text-sm font-medium mb-1">
                             Period End *
                           </label>
-                          <input
-                            type="date"
-                            required
+                          <DateField
+required
                             className="w-full border rounded-lg px-3 py-2"
                             value={form.one_time_end}
                             onChange={(event) =>
@@ -2086,9 +2084,8 @@ export default function GenerateInvoicesPage() {
                     Due Date *
                   </label>
 
-                  <input
-                    type="date"
-                    required
+                  <DateField
+required
                     className="w-full border rounded-lg px-3 py-2"
                     value={form.due_date}
                     onChange={(event) =>
@@ -2473,9 +2470,8 @@ export default function GenerateInvoicesPage() {
                     Billing Start *
                   </label>
 
-                  <input
-                    type="date"
-                    required
+                  <DateField
+required
                     className="w-full border rounded-lg px-3 py-2"
                     value={form.billing_start}
                     onChange={(event) =>
@@ -2543,9 +2539,8 @@ export default function GenerateInvoicesPage() {
                     Billing End *
                   </label>
 
-                  <input
-                    type="date"
-                    required
+                  <DateField
+required
                     className="w-full border rounded-lg px-3 py-2"
                     value={form.end_date}
                     onChange={(event) =>
@@ -2562,9 +2557,8 @@ export default function GenerateInvoicesPage() {
                     Due Date *
                   </label>
 
-                  <input
-                    type="date"
-                    required
+                  <DateField
+required
                     className="w-full border rounded-lg px-3 py-2"
                     value={form.due_date}
                     onChange={(event) =>

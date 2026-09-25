@@ -1,5 +1,7 @@
 'use client'
 
+import { DateField } from '@/components/date-field'
+
 import {
   use,
   useEffect,
@@ -888,10 +890,9 @@ export default function EditResidentPage({
                 Move-in Date *
               </label>
 
-              <input
+              <DateField
                 required
-                type="date"
-                className="w-full border rounded-lg px-3 py-2"
+className="w-full border rounded-lg px-3 py-2"
                 value={
                   form.move_in_date
                 }
@@ -909,10 +910,9 @@ export default function EditResidentPage({
                 Property Allocation Date *
               </label>
 
-              <input
+              <DateField
                 required
-                type="date"
-                className="w-full border rounded-lg px-3 py-2"
+className="w-full border rounded-lg px-3 py-2"
                 value={
                   form
                     .property_allocation_date
