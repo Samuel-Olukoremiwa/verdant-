@@ -17,7 +17,7 @@ export default async function ReceiptPage({
 
   const { data: resident } = await supabase
     .from('residents')
-    .select('id, full_name, houses:houses!residents_house_id_fkey ( address )')
+    .select('id, resident_code, full_name, houses:houses!residents_house_id_fkey ( address )')
     .eq('auth_user_id', user.id)
     .single()
 
@@ -26,7 +26,7 @@ export default async function ReceiptPage({
   const { data: payment } = await supabase
     .from('payments')
     .select(
-      'id, amount, status, paystack_reference, paid_at, resident_id, invoices ( period_label, due_types ( name ) )'
+      'id, payment_code, amount, status, paystack_reference, paid_at, resident_id, invoices ( period_label, due_types ( name ) )'
     )
     .eq('id', id)
     .single()
@@ -57,7 +57,12 @@ export default async function ReceiptPage({
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-500">Receipt</p>
-            <p className="font-mono text-sm">{payment.paystack_reference}</p>
+            <p className="font-mono text-sm font-semibold">
+              {payment.payment_code}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Gateway ref: {payment.paystack_reference ?? '—'}
+            </p>
           </div>
         </div>
 
@@ -65,6 +70,12 @@ export default async function ReceiptPage({
           <div>
             <p className="text-gray-500">Paid by</p>
             <p className="font-medium">{resident.full_name}</p>
+          </div>
+          <div>
+            <p className="text-gray-500">Resident ID</p>
+            <p className="font-mono font-medium">
+              {resident.resident_code}
+            </p>
           </div>
           <div>
             <p className="text-gray-500">Residence</p>

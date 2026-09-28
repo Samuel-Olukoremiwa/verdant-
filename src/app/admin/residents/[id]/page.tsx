@@ -12,6 +12,7 @@ const naira = (number: number) =>
 
 type Resident = {
   id: string
+  resident_code: string
   full_name: string
   phone: string | null
   email: string | null
@@ -145,6 +146,7 @@ export default async function ResidentDetailPage({
     .from('residents')
     .select(`
       id,
+      resident_code,
       full_name,
       phone,
       email,
@@ -249,6 +251,12 @@ export default async function ResidentDetailPage({
           <span className="eyebrow">Resident profile</span>
           <h1 className="page-title">{resident.full_name}</h1>
           <p className="page-lead">{displayAddress}</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Resident ID:{' '}
+            <strong className="font-mono">
+              {resident.resident_code}
+            </strong>
+          </p>
         </div>
 
         <div className="header-actions">

@@ -8,6 +8,7 @@ import Link from 'next/link'
 
 type Resident = {
   id: string
+  resident_code: string
   full_name: string
   phone:
     | string
@@ -163,6 +164,10 @@ export function ResidentsTable({
           }
 
           return (
+            resident.resident_code
+              .toLowerCase()
+              .includes(q)
+            ||
             resident.full_name
               .toLowerCase()
               .includes(q)
@@ -207,7 +212,7 @@ export function ResidentsTable({
                 .value
             )
           }
-          placeholder="Search by name, house, or phone..."
+          placeholder="Search by resident ID, name, house, or phone..."
           className="flex-1 border rounded-lg px-3 py-2 text-sm"
         />
 
@@ -340,6 +345,10 @@ export function ResidentsTable({
           <thead className="bg-gray-100 text-sm text-gray-600">
             <tr>
               <th className="p-3">
+                Resident ID
+              </th>
+
+              <th className="p-3">
                 Name
               </th>
 
@@ -390,6 +399,12 @@ export function ResidentsTable({
                     }
                     className="border-t text-sm"
                   >
+                    <td className="p-3 font-mono text-xs">
+                      {
+                        resident.resident_code
+                      }
+                    </td>
+
                     <td className="p-3 font-medium">
                       {
                         resident.full_name
@@ -494,7 +509,7 @@ export function ResidentsTable({
             ) : (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="p-6 text-center text-gray-500"
                 >
                   {residents.length ===

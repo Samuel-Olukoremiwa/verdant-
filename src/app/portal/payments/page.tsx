@@ -1,3 +1,4 @@
+import { formatDateGb } from '@/lib/date-format'
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import Link from 'next/link'
@@ -6,6 +7,7 @@ const naira = (n: number) => `₦${n.toLocaleString()}`
 
 type Payment = {
   id: string
+  payment_code: string
   amount: number
   status: string
   paystack_reference: string | null
@@ -28,7 +30,7 @@ export default async function PaymentHistoryPage() {
     ? await supabase
         .from('payments')
         .select(
-          'id, amount, status, paystack_reference, paid_at, created_at, invoices ( period_label, due_types ( name ) )'
+          'id, payment_code, amount, status, paystack_reference, paid_at, created_at, invoices ( period_label, due_types ( name ) )'
         )
         .eq('resident_id', resident.id)
         .order('created_at', { ascending: false })
@@ -49,6 +51,7 @@ export default async function PaymentHistoryPage() {
         <table className="w-full text-sm text-left">
           <thead className="bg-gray-100 text-gray-600">
             <tr>
+              <th className="p-3">Payment ID</th>
               <th className="p-3">Date</th>
               <th className="p-3">Description</th>
               <th className="p-3">Amount</th>
@@ -60,8 +63,11 @@ export default async function PaymentHistoryPage() {
             {payments.length > 0 ? (
               payments.map((p) => (
                 <tr key={p.id} className="border-t">
+                  <td className="p-3 font-mono text-xs">
+                    {p.payment_code}
+                  </td>
                   <td className="p-3">
-                    {new Date(p.paid_at ?? p.created_at).toLocaleDateString()}
+                    {formatDateGb(p.paid_at ?? p.created_at)}
                   </td>
                   <td className="p-3">
                     {p.invoices?.due_types?.name ?? 'Estate charge'}
@@ -95,7 +101,7 @@ export default async function PaymentHistoryPage() {
               ))
             ) : (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-gray-500">
+                <td colSpan={6} className="p-6 text-center text-gray-500">
                   No payments yet.
                 </td>
               </tr>

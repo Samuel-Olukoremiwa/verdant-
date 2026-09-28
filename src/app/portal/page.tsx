@@ -10,6 +10,7 @@ const naira = (n: number) => `₦${n.toLocaleString('en-NG')}`
 
 type Resident = {
   id: string
+  resident_code: string
   full_name: string
   phone: string | null
   email: string | null
@@ -98,6 +99,7 @@ export default async function Portal() {
     .from('residents')
     .select(`
       id,
+      resident_code,
       full_name,
       phone,
       email,
@@ -271,6 +273,12 @@ export default async function Portal() {
           <span className="eyebrow">Profile</span>
           <h2>Your household details</h2>
           <dl>
+            <div>
+              <dt>Resident ID</dt>
+              <dd className="font-mono">
+                {resident.resident_code}
+              </dd>
+            </div>
             <div>
               <dt>Email</dt>
               <dd>{resident.email ?? user.email ?? 'Not provided'}</dd>

@@ -161,6 +161,7 @@ export async function GET(req: NextRequest) {
           id,
           amount,
           paid_at,
+          payment_code,
           paystack_reference,
           status,
           invoices (
@@ -204,7 +205,10 @@ export async function GET(req: NextRequest) {
           period: invoice?.period_label ?? '—',
           amount: Number(payment.amount),
           date: payment.paid_at,
-          reference: payment.paystack_reference ?? '—',
+          reference:
+            payment.payment_code ??
+            payment.paystack_reference ??
+            '—',
         }
       })
 

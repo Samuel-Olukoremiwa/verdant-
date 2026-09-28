@@ -11,6 +11,7 @@ import {
 
 type ResidentRow = {
   id: string
+  resident_code: string
   house_id:
     | string
     | null
@@ -85,6 +86,7 @@ export default async function ResidentsPage({
           )
           .select(`
             id,
+            resident_code,
             house_id,
             full_name,
             phone,

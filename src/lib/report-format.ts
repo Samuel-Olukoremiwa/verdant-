@@ -241,7 +241,7 @@ export function reportColumns(
           {
             key: 'reference',
             label:
-              'Reference',
+              'Payment ID',
           },
           {
             key: 'amount',
