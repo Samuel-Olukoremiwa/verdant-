@@ -28,7 +28,7 @@ export default async function TeamPage() {
           <span className="eyebrow">Estate operations</span>
           <h1 className="page-title">Team</h1>
           <p className="page-lead">
-            Everyone with admin, super admin, or gate staff access to Verdant.
+            Everyone with admin, super admin, or gate staff access to Zadant.
           </p>
         </div>
         <div className="header-actions">
@@ -86,4 +86,4 @@ export default async function TeamPage() {
   )
 }
 
-export const metadata = {title: 'Admin Team', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}
+export const metadata = {title: 'Admin Team', description: 'Manage your estate account and workspace with Zadant.', robots: {index: false, follow: false}}

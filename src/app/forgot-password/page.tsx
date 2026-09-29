@@ -29,9 +29,9 @@ export default function ForgotPasswordPage() {
     <main id="main-content" className="login-page"><div className="auth-tools"><SiteTools/></div>
       <section className="login-panel">
         <Link href="/" className="brand login-brand">
-          <span className="brand-mark">V</span>
+          <span className="brand-mark">Z</span>
           <span>
-            Verdant
+            Zadant
             <small>Estate operations</small>
           </span>
         </Link>

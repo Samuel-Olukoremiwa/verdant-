@@ -2,7 +2,7 @@ import { PolicyPage } from "@/components/policy-page";
 export const metadata = {
   title: "Refund policy",
   description:
-    "Refund policy for the Verdant product demonstration. Draft pending operator review.",
+    "Refund policy for the Zadant product demonstration. Draft pending operator review.",
 };
 export default function Page() {
   return (
@@ -10,7 +10,7 @@ export default function Page() {
       <section>
         <h2>Policy not yet established</h2>
         <p>
-          Verdant does not yet have agreed commercial refund rules. No refund
+          Zadant does not yet have agreed commercial refund rules. No refund
           window, eligibility promise or blanket no-refund condition is being
           advertised.
         </p>
@@ -18,7 +18,7 @@ export default function Page() {
       <section>
         <h2>Estate charges and subscriptions</h2>
         <p>
-          Estate dues are separate from a future subscription to Verdant. The
+          Estate dues are separate from a future subscription to Zadant. The
           authorised estate operator must explain what each charge covers, how
           disputes are handled and which refund rules apply before accepting
           real payments.

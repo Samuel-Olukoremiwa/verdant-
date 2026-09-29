@@ -286,7 +286,7 @@ export default function NewDueTypePage() {
             <p className="mt-1 text-gray-600">
               When this charge
               is generated,
-              Verdant will split
+              Zadant will split
               the selected date
               range according to
               this frequency.

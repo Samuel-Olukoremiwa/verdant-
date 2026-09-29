@@ -52,7 +52,7 @@ export default async function ReceiptPage({
       <div className="bg-white border rounded-xl shadow p-8">
         <div className="flex justify-between items-start mb-8 border-b pb-6">
           <div>
-            <h1 className="text-xl font-bold">Verdant</h1>
+            <h1 className="text-xl font-bold">Zadant</h1>
             <p className="text-sm text-gray-500">Sample estate, Lagos</p>
           </div>
           <div className="text-right">
@@ -130,4 +130,4 @@ export default async function ReceiptPage({
   )
 }
 
-export const metadata = {title: 'Portal Payments Receipt', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}
+export const metadata = {title: 'Portal Payments Receipt', description: 'Manage your estate account and workspace with Zadant.', robots: {index: false, follow: false}}

@@ -78,7 +78,7 @@ export default async function QrPassPage() {
   const location =
     [
       house?.address ??
-        'Verdant Estate',
+        'Zadant Estate',
 
       resident.block_number
         ? `Block ${resident.block_number}`
@@ -149,7 +149,7 @@ export const metadata = {
     'Portal QR Pass',
 
   description:
-    'Resident gate pass for Verdant.',
+    'Resident gate pass for Zadant.',
 
   robots: {
     index: false,

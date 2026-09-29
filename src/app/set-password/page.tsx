@@ -62,11 +62,11 @@ export default async function SetPasswordPage() {
           className="brand login-brand"
         >
           <span className="brand-mark">
-            V
+            Z
           </span>
 
           <span>
-            Verdant
+            Zadant
 
             <small>
               Estate operations
@@ -153,7 +153,7 @@ export const metadata = {
     'Set Up Account',
 
   description:
-    'Set up your Verdant portal password.',
+    'Set up your Zadant portal password.',
 
   robots: {
     index: false,

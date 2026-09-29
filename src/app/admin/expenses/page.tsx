@@ -38,4 +38,4 @@ export default async function ExpensesPage() {
   )
 }
 
-export const metadata = {title: 'Admin Expenses', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}
+export const metadata = {title: 'Admin Expenses', description: 'Manage your estate account and workspace with Zadant.', robots: {index: false, follow: false}}

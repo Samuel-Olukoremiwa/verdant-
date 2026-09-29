@@ -156,7 +156,7 @@ export async function sendDueReminders(
       )
     }
 
-    const text = `Verdant: ${parts.join(
+    const text = `Zadant: ${parts.join(
       ' and '
     )} outstanding. Please sign in to your resident portal to view and pay. If recently paid, check your updated balance.`
 
@@ -185,7 +185,7 @@ export async function sendDueReminders(
     try {
       const { error } = await resend.emails.send(
         {
-          from: 'Verdant Estate <onboarding@resend.dev>',
+          from: 'Zadant Estate <onboarding@resend.dev>',
           to: resident.email,
           subject: 'Your estate dues reminder',
           text,

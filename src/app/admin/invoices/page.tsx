@@ -73,6 +73,6 @@ export default async function InvoicesPage() {
 
 export const metadata = {
   title: 'Admin Invoices',
-  description: 'Manage your estate account and workspace with Verdant.',
+  description: 'Manage your estate account and workspace with Zadant.',
   robots: { index: false, follow: false },
 }

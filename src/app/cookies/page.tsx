@@ -3,7 +3,7 @@ import { CookiePreferences } from "@/components/cookie-preferences";
 export const metadata = {
   title: "Cookie policy",
   description:
-    "Cookie policy for the Verdant product demonstration. Draft pending operator review.",
+    "Cookie policy for the Zadant product demonstration. Draft pending operator review.",
 };
 export default function Page() {
   return (
@@ -19,7 +19,7 @@ export default function Page() {
       <section>
         <h2>Appearance preference</h2>
         <p>
-          The verdant-theme browser storage value remembers your light or dark
+          The zadant-theme browser storage value remembers your light or dark
           appearance choice on this device. It is not an advertising identifier
           and remains until you change it or clear browser storage.
         </p>

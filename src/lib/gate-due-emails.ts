@@ -133,11 +133,11 @@ export function gateDueMessage(
 
   const action =
     audience === 'admin'
-      ? 'Please review the household account in Verdant.'
+      ? 'Please review the household account in Zadant.'
       : details
           .billing_contact_name
-        ? `The designated payee for this household is ${details.billing_contact_name}. Please review or coordinate settlement of the household dues in Verdant.`
-        : 'Please review the household dues in Verdant.'
+        ? `The designated payee for this household is ${details.billing_contact_name}. Please review or coordinate settlement of the household dues in Zadant.`
+        : 'Please review the household dues in Zadant.'
 
   return (
     `${intro}\n\n` +

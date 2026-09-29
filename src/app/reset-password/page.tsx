@@ -62,11 +62,11 @@ export default async function ResetPasswordPage() {
           className="brand login-brand"
         >
           <span className="brand-mark">
-            V
+            Z
           </span>
 
           <span>
-            Verdant
+            Zadant
 
             <small>
               Estate operations
@@ -156,7 +156,7 @@ export const metadata = {
     'Reset Password',
 
   description:
-    'Reset your Verdant account password.',
+    'Reset your Zadant account password.',
 
   robots: {
     index: false,

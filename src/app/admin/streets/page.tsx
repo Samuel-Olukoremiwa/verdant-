@@ -46,4 +46,4 @@ export default async function StreetsPage() {
   )
 }
 
-export const metadata = {title: 'Admin Streets', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}
+export const metadata = {title: 'Admin Streets', description: 'Manage your estate account and workspace with Zadant.', robots: {index: false, follow: false}}

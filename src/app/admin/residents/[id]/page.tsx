@@ -509,6 +509,6 @@ export default async function ResidentDetailPage({
 
 export const metadata = {
   title: 'Admin Residents',
-  description: 'Manage residents with Verdant.',
+  description: 'Manage residents with Zadant.',
   robots: { index: false, follow: false },
 }

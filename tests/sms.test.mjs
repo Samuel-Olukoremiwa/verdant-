@@ -5,7 +5,7 @@ import vm from 'node:vm'
 import ts from 'typescript'
 function load(name, extras={}) {
  const loaded={exports:{}}
- vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL(`../src/lib/${name}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:loaded,exports:loaded.exports,process:{env:{KUDISMS_API_KEY:'test-secret',KUDISMS_SENDER_ID:'Verdant'}},AbortSignal,Date,...extras})
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL(`../src/lib/${name}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module:loaded,exports:loaded.exports,process:{env:{KUDISMS_API_KEY:'test-secret',KUDISMS_SENDER_ID:'Zadant'}},AbortSignal,Date,...extras})
  return loaded.exports
 }
 test('normalizes Nigerian mobile formats without accepting multiple recipients',()=>{

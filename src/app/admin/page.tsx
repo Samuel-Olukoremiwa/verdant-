@@ -154,6 +154,6 @@ export default async function AdminDashboard() {
 
 export const metadata = {
   title: 'Admin',
-  description: 'Manage your estate account and workspace with Verdant.',
+  description: 'Manage your estate account and workspace with Zadant.',
   robots: { index: false, follow: false },
 }

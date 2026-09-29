@@ -2,7 +2,7 @@ import { PolicyPage } from "@/components/policy-page";
 export const metadata = {
   title: "Terms and conditions",
   description:
-    "Terms and conditions for the Verdant product demonstration. Draft pending operator review.",
+    "Terms and conditions for the Zadant product demonstration. Draft pending operator review.",
 };
 export default function Page() {
   return (
@@ -10,7 +10,7 @@ export default function Page() {
       <section>
         <h2>Demonstration status</h2>
         <p>
-          This site presents Verdant, an estate-management product in
+          This site presents Zadant, an estate-management product in
           development. Estate names and demonstration records are illustrative.
           They do not represent customer endorsements, adoption figures or
           guaranteed results.

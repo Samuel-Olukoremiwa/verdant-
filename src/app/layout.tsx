@@ -12,13 +12,13 @@ import { BackToTop } from "@/components/site-tools";
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
   title: {
-    default: "Verdant | Estate life, together",
-    template: "%s | Verdant",
+    default: "Zadant | Estate life, together",
+    template: "%s | Zadant",
   },
   description:
-    "A shared workspace for residents, estate payments and gate access. Verdant is an estate-management product demonstration for Nigeria.",
+    "A shared workspace for residents, estate payments and gate access. Zadant is an estate-management product demonstration for Nigeria.",
   openGraph: {
-    title: "Verdant | Estate life, together",
+    title: "Zadant | Estate life, together",
     description:
       "Less admin. More living. Residents, estate payments and gate access in one workspace.",
     type: "website",

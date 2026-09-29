@@ -338,6 +338,6 @@ export default async function Portal() {
 
 export const metadata = {
   title: 'Portal',
-  description: 'Manage your estate account and workspace with Verdant.',
+  description: 'Manage your estate account and workspace with Zadant.',
   robots: { index: false, follow: false },
 }

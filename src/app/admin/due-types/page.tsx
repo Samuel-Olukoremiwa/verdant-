@@ -148,7 +148,7 @@ export const metadata = {
     'Admin Due Types',
 
   description:
-    'Manage estate billing types with Verdant.',
+    'Manage estate billing types with Zadant.',
 
   robots: {
     index: false,

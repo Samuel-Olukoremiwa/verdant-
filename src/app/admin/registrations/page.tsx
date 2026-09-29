@@ -124,7 +124,7 @@ export const metadata = {
     'Admin Registrations',
 
   description:
-    'Manage resident registration requests with Verdant.',
+    'Manage resident registration requests with Zadant.',
 
   robots: {
     index: false,

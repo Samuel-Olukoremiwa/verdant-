@@ -1773,7 +1773,7 @@ required
                       </span>
 
                       <p className="text-xs text-gray-500">
-                        Verdant generates every period between
+                        Zadant generates every period between
                         From and To according to this due type&apos;s
                         frequency. For example, January 2026 to
                         September 2026 creates nine monthly invoices.
@@ -2597,7 +2597,7 @@ required
                     </p>
 
                     <p className="mt-1 text-gray-500">
-                      Verdant splits the selected range
+                      Zadant splits the selected range
                       into monthly, quarterly, yearly,
                       or one-time invoices according to
                       the due type. Period labels are

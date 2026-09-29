@@ -11,4 +11,4 @@ export default async function VisitorsPage() {
   return <div className="page-wrap"><Link href="/portal">← My portal</Link><h1 className="page-title">Visitor entry codes</h1><p className="page-lead mb-5">Invite someone to your home and share their one-time entry code.</p>{error ? <p role="alert">Visitor passes could not be loaded. Please contact the estate administrator.</p> : <VisitorPasses asOf={new Date().toISOString()} passes={(data ?? []) as VisitorPass[]} />}</div>
 }
 
-export const metadata = {title: 'Portal Visitors', description: 'Manage your estate account and workspace with Verdant.', robots: {index: false, follow: false}}
+export const metadata = {title: 'Portal Visitors', description: 'Manage your estate account and workspace with Zadant.', robots: {index: false, follow: false}}

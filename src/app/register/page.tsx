@@ -324,11 +324,11 @@ export default function RegisterPage() {
           className="brand login-brand"
         >
           <span className="brand-mark">
-            V
+            Z
           </span>
 
           <span>
-            Verdant
+            Zadant
             <small>
               Estate operations
             </small>
@@ -371,7 +371,7 @@ export default function RegisterPage() {
               details below. If another
               resident has already
               registered the same house,
-              Verdant will automatically
+              Zadant will automatically
               attach you to that household
               instead of creating
               duplicate bills.

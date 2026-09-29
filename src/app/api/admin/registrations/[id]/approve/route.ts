@@ -789,7 +789,7 @@ export async function POST(
       `registration:${id}`,
       'registration',
       reg.phone ?? '',
-      'Verdant: Your estate registration is approved. Check your email, including spam, for the invitation to set your password and access the resident portal.'
+      'Zadant: Your estate registration is approved. Check your email, including spam, for the invitation to set your password and access the resident portal.'
     )
 
   return NextResponse.json({

@@ -368,7 +368,7 @@ export const metadata = {
     'Admin Residents',
 
   description:
-    'Manage estate residents and billing with Verdant.',
+    'Manage estate residents and billing with Zadant.',
 
   robots: {
     index: false,

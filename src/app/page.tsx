@@ -107,7 +107,7 @@ export default function Home() {
           </div>
           <div className="faq-list">
             <details>
-              <summary>Who is Verdant for?</summary>
+              <summary>Who is Zadant for?</summary>
               <p>
                 Residents, estate administrators and gate staff. Account
                 permissions determine which workspace and records each person
@@ -118,7 +118,7 @@ export default function Home() {
               <summary>Is Evergreen a real customer?</summary>
               <p>
                 No. Evergreen is a fictional estate used while developing and
-                demonstrating Verdant. It is not a customer endorsement.
+                demonstrating Zadant. It is not a customer endorsement.
               </p>
             </details>
             <details>

@@ -38,7 +38,7 @@ export function visitorMessage(
   pass: VisitorPass
 ) {
   return (
-    `Verdant: You are invited to ${pass.address}.\n` +
+    `Zadant: You are invited to ${pass.address}.\n` +
     `Visitor: ${pass.visitor_name}\n` +
     `Entry code: ${pass.code}\n` +
     `Valid from: ${visitorTime(pass.starts_at)}\n` +

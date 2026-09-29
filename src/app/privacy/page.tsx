@@ -2,7 +2,7 @@ import { PolicyPage } from "@/components/policy-page";
 export const metadata = {
   title: "Privacy policy",
   description:
-    "Privacy policy for the Verdant product demonstration. Draft pending operator review.",
+    "Privacy policy for the Zadant product demonstration. Draft pending operator review.",
 };
 export default function Page() {
   return (
@@ -10,7 +10,7 @@ export default function Page() {
       <section>
         <h2>About this demonstration</h2>
         <p>
-          Verdant demonstrates estate administration, resident accounts, billing
+          Zadant demonstrates estate administration, resident accounts, billing
           and gate access for communities in Nigeria. Evergreen is a fictional
           estate name. Please use sample data when exploring the demonstration.
         </p>
@@ -22,7 +22,7 @@ export default function Page() {
           numbers, household details, charges, payment references, visitor
           details and entry logs. Passwords are handled by the authentication
           provider. Card details are entered with the payment provider, rather
-          than in Verdant forms.
+          than in Zadant forms.
         </p>
       </section>
       <section>
