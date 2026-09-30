@@ -92,6 +92,8 @@ const sqlFiles = [
   'migration_registration_approval_claim.sql',
 
   'migration_registration_atomic_decline.sql',
+
+  'migration_payment_transactions_foundation.sql',
 ]
 
 function sql(
@@ -193,6 +195,7 @@ test(
         'gate_due_emails',
         'houses',
         'invoices',
+        'payment_transactions',
         'payments',
         'registration_rate_limits',
         'registration_requests',
@@ -260,6 +263,46 @@ test(
         [
           'payments',
           'payment_code',
+        ],
+
+        [
+          'payments',
+          'transaction_id',
+        ],
+
+        [
+          'payment_transactions',
+          'reference',
+        ],
+
+        [
+          'payment_transactions',
+          'resident_id',
+        ],
+
+        [
+          'payment_transactions',
+          'provider',
+        ],
+
+        [
+          'payment_transactions',
+          'amount',
+        ],
+
+        [
+          'payment_transactions',
+          'currency',
+        ],
+
+        [
+          'payment_transactions',
+          'status',
+        ],
+
+        [
+          'payment_transactions',
+          'paid_at',
         ],
 
         [
@@ -410,6 +453,20 @@ test(
         'due_types_billing_scope_check',
 
         'payments_reference_invoice_unique',
+
+        'payments_transaction_id_fkey',
+
+        'payments_transaction_invoice_unique',
+
+        'payment_transactions_reference_not_blank',
+
+        'payment_transactions_provider_check',
+
+        'payment_transactions_amount_positive',
+
+        'payment_transactions_currency_check',
+
+        'payment_transactions_status_check',
 
         'registration_phone_format',
 
@@ -763,7 +820,8 @@ test(
 
             RETURNING
               id,
-              payment_code
+              payment_code,
+              transaction_id
           `,
           [
             invoice.id,
@@ -774,6 +832,10 @@ test(
       assert.match(
         payment.payment_code,
         /^PAY-[0-9]{6}-[0-9]{6,}$/
+      )
+
+      assert.ok(
+        payment.transaction_id
       )
     } finally {
       await db.close()
@@ -1160,6 +1222,578 @@ test(
       assert.equal(
         final.approval_claimed_at,
         null
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'payment transactions group multiple invoice allocations under one reference',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Transaction Test Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const house =
+        await first(
+          db,
+          `
+            INSERT INTO public.houses (
+              address,
+              street_id,
+              house_number
+            )
+
+            VALUES (
+              'House 500',
+              $1,
+              '500'
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      const resident =
+        await first(
+          db,
+          `
+            INSERT INTO public.residents (
+              house_id,
+              full_name,
+              phone,
+              email,
+              relationship,
+              move_in_date,
+              property_allocation_date
+            )
+
+            VALUES (
+              $1,
+              'Transaction Test Resident',
+              '08012345678',
+              'transaction-test@example.test',
+              'owner',
+              '2026-09-01',
+              '2026-08-01'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+          ]
+        )
+
+      const dueTypes =
+        await db.query(`
+          SELECT id
+
+          FROM public.due_types
+
+          ORDER BY id
+
+          LIMIT 2
+        `)
+
+      assert.ok(
+        dueTypes.rows.length >=
+          2
+      )
+
+      const invoiceOne =
+        await first(
+          db,
+          `
+            INSERT INTO public.invoices (
+              house_id,
+              due_type_id,
+              period_label,
+              period_start,
+              period_end,
+              amount,
+              amount_paid,
+              status,
+              due_date
+            )
+
+            VALUES (
+              $1,
+              $2,
+              'Transaction Test A',
+              '2026-09-01',
+              '2026-09-30',
+              2000,
+              0,
+              'unpaid',
+              '2026-09-30'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+            dueTypes.rows[0].id,
+          ]
+        )
+
+      const invoiceTwo =
+        await first(
+          db,
+          `
+            INSERT INTO public.invoices (
+              house_id,
+              due_type_id,
+              period_label,
+              period_start,
+              period_end,
+              amount,
+              amount_paid,
+              status,
+              due_date
+            )
+
+            VALUES (
+              $1,
+              $2,
+              'Transaction Test B',
+              '2026-09-01',
+              '2026-09-30',
+              3000,
+              0,
+              'unpaid',
+              '2026-09-30'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+            dueTypes.rows[1].id,
+          ]
+        )
+
+      const reference =
+        'INV-TRANSACTION-FOUNDATION-001'
+
+      await db.query(
+        `
+          INSERT INTO public.payments (
+            invoice_id,
+            resident_id,
+            amount,
+            paystack_reference,
+            status
+          )
+
+          VALUES
+            (
+              $1,
+              $3,
+              2000,
+              $4,
+              'pending'
+            ),
+            (
+              $2,
+              $3,
+              3000,
+              $4,
+              'pending'
+            )
+        `,
+        [
+          invoiceOne.id,
+          invoiceTwo.id,
+          resident.id,
+          reference,
+        ]
+      )
+
+      const transaction =
+        await first(
+          db,
+          `
+            SELECT
+              id,
+              reference,
+              resident_id,
+              provider,
+              amount,
+              currency,
+              status,
+              paid_at
+
+            FROM public.payment_transactions
+
+            WHERE reference =
+              $1
+          `,
+          [
+            reference,
+          ]
+        )
+
+      assert.equal(
+        transaction.reference,
+        reference
+      )
+
+      assert.equal(
+        transaction.resident_id,
+        resident.id
+      )
+
+      assert.equal(
+        transaction.provider,
+        'paystack'
+      )
+
+      assert.equal(
+        Number(
+          transaction.amount
+        ),
+        5000
+      )
+
+      assert.equal(
+        transaction.currency,
+        'NGN'
+      )
+
+      assert.equal(
+        transaction.status,
+        'pending'
+      )
+
+      assert.equal(
+        transaction.paid_at,
+        null
+      )
+
+      const allocations =
+        await db.query(
+          `
+            SELECT
+              transaction_id
+
+            FROM public.payments
+
+            WHERE paystack_reference =
+              $1
+          `,
+          [
+            reference,
+          ]
+        )
+
+      assert.equal(
+        allocations.rows.length,
+        2
+      )
+
+      assert.ok(
+        allocations.rows.every(
+          (
+            row
+          ) =>
+            row.transaction_id ===
+            transaction.id
+        )
+      )
+
+      await db.query(
+        `
+          UPDATE public.payments
+
+          SET
+            status =
+              'success',
+
+            paid_at =
+              '2026-09-30T12:00:00Z'
+
+          WHERE paystack_reference =
+            $1
+        `,
+        [
+          reference,
+        ]
+      )
+
+      const confirmed =
+        await first(
+          db,
+          `
+            SELECT
+              amount,
+              status,
+              paid_at
+
+            FROM public.payment_transactions
+
+            WHERE id =
+              $1
+          `,
+          [
+            transaction.id,
+          ]
+        )
+
+      assert.equal(
+        Number(
+          confirmed.amount
+        ),
+        5000
+      )
+
+      assert.equal(
+        confirmed.status,
+        'success'
+      )
+
+      assert.ok(
+        confirmed.paid_at
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'manual payment allocations create manual payment transactions',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Manual Transaction Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const house =
+        await first(
+          db,
+          `
+            INSERT INTO public.houses (
+              address,
+              street_id,
+              house_number
+            )
+
+            VALUES (
+              'House 700',
+              $1,
+              '700'
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      const resident =
+        await first(
+          db,
+          `
+            INSERT INTO public.residents (
+              house_id,
+              full_name,
+              phone,
+              email,
+              relationship,
+              move_in_date,
+              property_allocation_date
+            )
+
+            VALUES (
+              $1,
+              'Manual Payment Resident',
+              '08012345678',
+              'manual-payment@example.test',
+              'owner',
+              '2026-09-01',
+              '2026-08-01'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+          ]
+        )
+
+      const due =
+        await first(
+          db,
+          `
+            SELECT id
+
+            FROM public.due_types
+
+            ORDER BY id
+
+            LIMIT 1
+          `
+        )
+
+      const invoice =
+        await first(
+          db,
+          `
+            INSERT INTO public.invoices (
+              house_id,
+              due_type_id,
+              period_label,
+              period_start,
+              period_end,
+              amount,
+              amount_paid,
+              status,
+              due_date
+            )
+
+            VALUES (
+              $1,
+              $2,
+              'Manual Transaction Test',
+              '2026-09-01',
+              '2026-09-30',
+              5000,
+              0,
+              'unpaid',
+              '2026-09-30'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+            due.id,
+          ]
+        )
+
+      const reference =
+        'MANUAL-TRANSACTION-FOUNDATION-001'
+
+      const payment =
+        await first(
+          db,
+          `
+            INSERT INTO public.payments (
+              invoice_id,
+              resident_id,
+              amount,
+              paystack_reference,
+              status,
+              paid_at
+            )
+
+            VALUES (
+              $1,
+              $2,
+              500,
+              $3,
+              'success',
+              '2026-09-30T13:00:00Z'
+            )
+
+            RETURNING
+              id,
+              transaction_id
+          `,
+          [
+            invoice.id,
+            resident.id,
+            reference,
+          ]
+        )
+
+      assert.ok(
+        payment.transaction_id
+      )
+
+      const transaction =
+        await first(
+          db,
+          `
+            SELECT
+              id,
+              provider,
+              amount,
+              status,
+              paid_at
+
+            FROM public.payment_transactions
+
+            WHERE reference =
+              $1
+          `,
+          [
+            reference,
+          ]
+        )
+
+      assert.equal(
+        transaction.id,
+        payment.transaction_id
+      )
+
+      assert.equal(
+        transaction.provider,
+        'manual'
+      )
+
+      assert.equal(
+        Number(
+          transaction.amount
+        ),
+        500
+      )
+
+      assert.equal(
+        transaction.status,
+        'success'
+      )
+
+      assert.ok(
+        transaction.paid_at
       )
     } finally {
       await db.close()
