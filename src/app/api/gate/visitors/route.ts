@@ -2,27 +2,41 @@ import {
   after,
   NextResponse,
 } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { sendGateDueEmails } from '@/lib/gate-due-emails'
 
-export const maxDuration =
-  60
+import {
+  createClient,
+} from '@/lib/supabase/server'
+
+import {
+  queueGateDueEmails,
+} from '@/lib/gate-due-emails'
+
+import {
+  processNotificationQueue,
+} from '@/lib/notification-worker'
 
 type VisitorRedeemResult = {
-  visitor: string
+  visitor:
+    string
 
   visitor_phone:
     | string
     | null
 
-  host: string
-  address: string
-  message: string
+  host:
+    string
+
+  address:
+    string
+
+  message:
+    string
 
   has_outstanding:
     boolean
 
-  balance: number
+  balance:
+    number
 
   alert_queued:
     boolean
@@ -35,7 +49,9 @@ export async function POST(
     await createClient()
 
   const {
-    data: { user },
+    data: {
+      user,
+    },
   } =
     await db.auth.getUser()
 
@@ -46,7 +62,8 @@ export async function POST(
           'Please sign in',
       },
       {
-        status: 401,
+        status:
+          401,
       }
     )
   }
@@ -54,7 +71,10 @@ export async function POST(
   const body =
     await request
       .json()
-      .catch(() => null)
+      .catch(
+        () =>
+          null
+      )
 
   if (
     !body ||
@@ -70,7 +90,8 @@ export async function POST(
           'Enter the 10-character visitor code',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -87,14 +108,17 @@ export async function POST(
       }
     )
 
-  if (error) {
+  if (
+    error
+  ) {
     return NextResponse.json(
       {
         error:
           error.message,
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -111,7 +135,8 @@ export async function POST(
           'Could not verify visitor',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
@@ -119,15 +144,34 @@ export async function POST(
   if (
     result.has_outstanding
   ) {
-    after(async () => {
-      try {
-        await sendGateDueEmails()
-      } catch {
-        console.error(
-          'Visitor billing alert email queue could not be processed'
-        )
+    after(
+      async () => {
+        try {
+          await queueGateDueEmails({
+            maxJobs:
+              10,
+
+            deadlineMs:
+              5000,
+          })
+
+          await processNotificationQueue({
+            kind:
+              'gate',
+
+            maxJobs:
+              10,
+
+            deadlineMs:
+              12000,
+          })
+        } catch {
+          console.error(
+            'Visitor billing alert remains queued for background delivery'
+          )
+        }
       }
-    })
+    )
   }
 
   return NextResponse.json(

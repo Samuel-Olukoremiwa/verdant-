@@ -9,7 +9,8 @@ export type GateDueDetails = {
     | 'resident'
     | 'visitor'
 
-  name: string
+  name:
+    string
 
   visitor_phone?:
     | string
@@ -49,13 +50,33 @@ export type GateDueDetails = {
     number
 
   bills: {
-    label: string
-    amount: number
+    label:
+      string
+
+    amount:
+      number
 
     due_date:
       | string
       | null
   }[]
+}
+
+type LegacyGateJob = {
+  id:
+    string
+
+  alert_id:
+    string
+
+  recipient:
+    string
+
+  audience:
+    string
+
+  attempts:
+    number
 }
 
 export function gateDueMessage(
@@ -91,19 +112,23 @@ export function gateDueMessage(
         hour12:
           false,
       }
-    ) + ' WAT'
+    ) +
+    ' WAT'
 
   const isVisitor =
     details.source_type ===
     'visitor'
 
-  let intro: string
+  let intro:
+    string
 
   if (
     audience ===
     'admin'
   ) {
-    if (isVisitor) {
+    if (
+      isVisitor
+    ) {
       intro =
         `Visitor ${details.name} entered the estate at ${when}.\n` +
         `Visitor phone: ${details.visitor_phone || 'Not provided'}\n` +
@@ -114,12 +139,20 @@ export function gateDueMessage(
         `Designated billing contact: ${
           details.billing_contact_name ||
           'Not assigned'
+        }\n` +
+        `Billing contact email: ${
+          details.email ||
+          'Not provided'
+        }\n` +
+        `Billing contact phone: ${
+          details.phone ||
+          'Not provided'
         }`
     } else {
       intro =
         `${details.name} entered the estate at ${when}.\n` +
-        `Email: ${details.email || 'Not provided'}\n` +
-        `Phone: ${details.phone || 'Not provided'}\n` +
+        `Resident email: ${details.email || 'Not provided'}\n` +
+        `Resident phone: ${details.phone || 'Not provided'}\n` +
         `Address: ${details.address}\n` +
         `Designated billing contact: ${
           details.billing_contact_name ||
@@ -133,8 +166,7 @@ export function gateDueMessage(
       `A visitor named ${details.name} for ${
         details.host ||
         'your household'
-      } ` +
-      `was admitted to ${details.address} at ${when}.`
+      } was admitted to ${details.address} at ${when}.`
   } else {
     intro =
       `${details.name} entered the estate for the household at ` +
@@ -204,51 +236,103 @@ function subjectFor(
     : 'Your household dues reminder'
 }
 
-export async function sendGateDueEmails() {
-  const apiKey =
-    process.env
-      .RESEND_API_KEY
+async function restorePending(
+  job:
+    LegacyGateJob
+) {
+  const db =
+    createServiceClient()
 
-  const from =
-    process.env
-      .RESEND_FROM_EMAIL
+  await db
+    .from(
+      'gate_due_emails'
+    )
+    .update({
+      status:
+        'pending',
 
-  if (
-    !apiKey ||
-    !from
-  ) {
-    return {
-      sent: 0,
+      available_at:
+        new Date(
+          Date.now() +
+            60000
+        )
+          .toISOString(),
+    })
+    .eq(
+      'id',
+      job.id
+    )
+    .eq(
+      'attempts',
+      job.attempts
+    )
+}
 
-      failed: 0,
+async function markFailed(
+  job:
+    LegacyGateJob
+) {
+  const db =
+    createServiceClient()
 
-      configured:
-        false,
-    }
-  }
+  await db
+    .from(
+      'gate_due_emails'
+    )
+    .update({
+      status:
+        'failed',
+    })
+    .eq(
+      'id',
+      job.id
+    )
+    .eq(
+      'attempts',
+      job.attempts
+    )
+}
 
+export async function queueGateDueEmails({
+  maxJobs = 50,
+  deadlineMs = 10000,
+}: {
+  maxJobs?:
+    number
+
+  deadlineMs?:
+    number
+} = {}) {
   const db =
     createServiceClient()
 
   const deadline =
     Date.now() +
-    40000
+    deadlineMs
 
-  let sent =
+  let migrated =
+    0
+
+  let duplicates =
     0
 
   let failed =
     0
 
   while (
+    migrated +
+      duplicates +
+      failed <
+      maxJobs &&
     Date.now() <
-    deadline
+      deadline
   ) {
     const {
       data:
         jobs,
 
-      error,
+      error:
+        claimError,
     } =
       await db.rpc(
         'claim_gate_due_emails',
@@ -258,9 +342,11 @@ export async function sendGateDueEmails() {
         }
       )
 
-    if (error) {
+    if (
+      claimError
+    ) {
       throw new Error(
-        'Unable to claim gate reminder'
+        'Unable to claim queued gate email'
       )
     }
 
@@ -271,14 +357,15 @@ export async function sendGateDueEmails() {
     }
 
     const job =
-      jobs[0]
+      jobs[0] as
+        LegacyGateJob
 
     const {
       data:
         alert,
 
       error:
-        readError,
+        alertError,
     } =
       await db
         .from(
@@ -294,112 +381,82 @@ export async function sendGateDueEmails() {
         .single()
 
     if (
-      readError ||
+      alertError ||
       !alert
     ) {
-      throw new Error(
-        'Unable to load gate reminder'
+      await markFailed(
+        job
       )
+
+      failed++
+
+      continue
     }
 
     const details =
-      alert.details as GateDueDetails
+      alert.details as
+        GateDueDetails
 
-    let accepted =
-      false
-
-    try {
-      const response =
-        await fetch(
-          'https://api.resend.com/emails',
-          {
-            method:
-              'POST',
-
-            headers: {
-              Authorization:
-                `Bearer ${apiKey}`,
-
-              'Content-Type':
-                'application/json',
-
-              'Idempotency-Key':
-                `gate-dues-${job.id}`,
-            },
-
-            body:
-              JSON.stringify(
-                {
-                  from,
-
-                  to: [
-                    job.recipient,
-                  ],
-
-                  subject:
-                    subjectFor(
-                      details,
-                      job.audience
-                    ),
-
-                  text:
-                    gateDueMessage(
-                      details,
-                      job.audience
-                    ),
-                }
-              ),
-
-            signal:
-              AbortSignal.timeout(
-                8000
-              ),
-          }
+    const {
+      error:
+        insertError,
+    } =
+      await db
+        .from(
+          'notification_outbox'
         )
+        .insert({
+          event_key:
+            `gate:${job.id}`,
 
-      const body =
-        await response
-          .json()
+          kind:
+            'gate',
 
-      accepted =
-        response.ok &&
-        typeof body.id ===
-          'string'
-    } catch {
-      // Keep the job queued
-      // for retry.
+          channel:
+            'email',
+
+          recipient:
+            job.recipient,
+
+          subject:
+            subjectFor(
+              details,
+              job.audience
+            ),
+
+          body:
+            gateDueMessage(
+              details,
+              job.audience
+            ),
+        })
+
+    if (
+      insertError &&
+      insertError.code !==
+        '23505'
+    ) {
+      await restorePending(
+        job
+      )
+
+      failed++
+
+      continue
     }
 
     const {
       error:
-        updateError,
+        migrateError,
     } =
       await db
         .from(
           'gate_due_emails'
         )
-        .update(
-          accepted
-            ? {
-                status:
-                  'sent',
-
-                sent_at:
-                  new Date()
-                    .toISOString(),
-              }
-            : {
-                status:
-                  'pending',
-
-                available_at:
-                  new Date(
-                    Date.now() +
-                      60000
-                  )
-                    .toISOString(),
-              }
-        )
+        .update({
+          status:
+            'migrated',
+        })
         .eq(
           'id',
           job.id
@@ -410,38 +467,32 @@ export async function sendGateDueEmails() {
         )
 
     if (
-      updateError
+      migrateError
     ) {
-      throw new Error(
-        'Unable to record gate reminder status'
-      )
+      /*
+       * The outbox event key is unique.
+       * Even if this legacy status update
+       * fails, another bridge attempt
+       * cannot create a duplicate email.
+       */
+      failed++
+
+      continue
     }
 
     if (
-      accepted
+      insertError?.code ===
+      '23505'
     ) {
-      sent++
+      duplicates++
     } else {
-      failed++
+      migrated++
     }
-
-    await new Promise(
-      (
-        resolve
-      ) =>
-        setTimeout(
-          resolve,
-          550
-        )
-    )
   }
 
   return {
-    sent,
-
+    migrated,
+    duplicates,
     failed,
-
-    configured:
-      true,
   }
 }

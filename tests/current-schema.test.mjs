@@ -84,6 +84,8 @@ const sqlFiles = [
   'migration_reports_pagination.sql',
 
   'migration_notification_outbox.sql',
+
+  'migration_gate_email_outbox_bridge.sql',
 ]
 
 function sql(

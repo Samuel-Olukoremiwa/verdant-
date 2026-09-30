@@ -4,6 +4,10 @@ import {
 } from 'next/server'
 
 import {
+  queueGateDueEmails,
+} from '@/lib/gate-due-emails'
+
+import {
   processNotificationQueue,
 } from '@/lib/notification-worker'
 
@@ -40,20 +44,36 @@ export async function GET(
   }
 
   try {
-    const result =
-      await processNotificationQueue(
-        {
-          maxJobs:
-            100,
+    /*
+     * During the compatibility phase,
+     * gate events are still written to
+     * gate_due_emails by the database.
+     *
+     * Move those jobs into the shared
+     * notification outbox first.
+     */
+    const gate =
+      await queueGateDueEmails({
+        maxJobs:
+          50,
 
-          deadlineMs:
-            45000,
-        }
-      )
+        deadlineMs:
+          10000,
+      })
 
-    return NextResponse.json(
-      result
-    )
+    const delivery =
+      await processNotificationQueue({
+        maxJobs:
+          100,
+
+        deadlineMs:
+          32000,
+      })
+
+    return NextResponse.json({
+      gate,
+      delivery,
+    })
   } catch {
     return NextResponse.json(
       {
