@@ -99,9 +99,11 @@ const sqlFiles = [
 
   'migration_collected_report_transaction_ids.sql',
 
-  'migrations/20260930190015_due_type_capabilities.sql',
+   'migrations/20260930190015_due_type_capabilities.sql',
 
-  'migrations/20260930192416_due_type_reporting_capabilities.sql',
+   'migrations/20260930192416_due_type_reporting_capabilities.sql',
+
+   'migrations/20260930194502_payment_transactions_foundation_reconciliation.sql',
 ]
 
 function sql(
