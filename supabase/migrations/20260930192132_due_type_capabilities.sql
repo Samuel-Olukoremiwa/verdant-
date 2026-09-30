@@ -1046,4 +1046,4 @@ TO service_role;
 
 NOTIFY pgrst, 'reload schema';
 
-COMMIT;
+COMMIT;;

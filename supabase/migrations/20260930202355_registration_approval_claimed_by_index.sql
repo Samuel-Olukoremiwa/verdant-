@@ -21,4 +21,4 @@ ON public.registration_requests (
   approval_claimed_by
 );
 
-COMMIT;
+COMMIT;;

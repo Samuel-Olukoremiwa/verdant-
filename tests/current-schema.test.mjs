@@ -39,76 +39,49 @@ const root =
   )
 
 const sqlFiles = [
-  'schema.sql',
+  'migrations/20260930120000_legacy_schema_baseline.sql',
 
-  'auth.sql',
+  'migrations/20260930124452_production_foundation_indexes_and_function_hardening.sql',
 
-  'migration_phase1_6_repairs.sql',
+  'migrations/20260930124619_consolidate_rls_policies.sql',
 
-  'migration_registration_requests_base.sql',
+  'migrations/20260930131052_dashboard_aggregation.sql',
 
-  'migration_phase7_12.sql',
+  'migrations/20260930132102_residents_directory_pagination.sql',
 
-  'migration_design_security.sql',
+  'migrations/20260930133037_invoices_directory_pagination.sql',
 
-  'migration_gate_dues_dates.sql',
+  'migrations/20260930134042_reports_pagination.sql',
 
-  'migration_address_billing_integrity.sql',
+  'migrations/20260930135710_notification_outbox_table.sql',
 
-  'migration_registration_visitor_upgrade.sql',
+  'migrations/20260930135738_notification_outbox_queue_due_reminders.sql',
 
-  'migration_hybrid_house_resident_billing.sql',
+  'migrations/20260930135754_notification_outbox_claim_worker.sql',
 
-  'migration_single_house_billing.sql',
+  'migrations/20260930143106_gate_email_outbox_bridge.sql',
 
-  'migration_billing_ranges_and_resident_due_dates.sql',
+  'migrations/20260930144915_gate_email_outbox_cutover.sql',
 
-  'migration_registration_decline_reason_required.sql',
+  'migrations/20260930164437_registration_approval_claim.sql',
 
-  'migration_phase13_sms.sql',
+  'migrations/20260930165845_registration_atomic_decline.sql',
 
-  'migration_production_alignment.sql',
+  'migrations/20260930171927_payment_transactions_foundation.sql',
 
-  'migration_production_foundation_indexes_and_function_hardening.sql',
+  'migrations/20260930182116_payment_transactions_resident_access.sql',
 
-  'migration_consolidate_rls_policies.sql',
+  'migrations/20260930185150_collected_report_transaction_ids.sql',
 
-  'migration_dashboard_aggregation.sql',
+  'migrations/20260930192132_due_type_capabilities.sql',
 
-  'migration_residents_directory_pagination.sql',
+  'migrations/20260930194212_due_type_reporting_capabilities.sql',
 
-  'migration_human_readable_ids.sql',
+  'migrations/20260930195123_payment_transactions_foundation_reconciliation.sql',
 
-  'migration_invoices_directory_pagination.sql',
+  'migrations/20260930202355_registration_approval_claimed_by_index.sql',
 
-  'migration_reports_pagination.sql',
-
-  'migration_notification_outbox.sql',
-
-  'migration_gate_email_outbox_bridge.sql',
-
-  'migration_gate_email_outbox_cutover.sql',
-
-  'migration_registration_approval_claim.sql',
-
-  'migration_registration_atomic_decline.sql',
-
-  'migration_payment_transactions_foundation.sql',
-
-  'migration_payment_transactions_resident_access.sql',
-
-  'migration_collected_report_transaction_ids.sql',
-
-  'migrations/20260930190015_due_type_capabilities.sql',
-
-  'migrations/20260930192416_due_type_reporting_capabilities.sql',
-
-  'migrations/20260930194502_payment_transactions_foundation_reconciliation.sql',
-
-  'migrations/20260930200132_registration_approval_claimed_by_index.sql',
-
-  'migrations/20260930203855_restrict_single_house_invoice_helper.sql',
-
+  'migrations/20260930211856_restrict_single_house_invoice_helper.sql',
 ]
 
 function sql(

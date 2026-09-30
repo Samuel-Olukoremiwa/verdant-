@@ -48,4 +48,4 @@ ON FUNCTION
 TO
   service_role;
 
-COMMIT;
+COMMIT;;

@@ -728,4 +728,4 @@ $$;
 -- verified and reconciled with tracked migration history.
 -- ============================================================
 
-COMMIT;
+COMMIT;;
