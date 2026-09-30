@@ -1,6 +1,8 @@
 import 'server-only'
 
-import { createServiceClient } from '@/lib/supabase/service'
+import {
+  createServiceClient,
+} from '@/lib/supabase/service'
 
 export type GateDueDetails = {
   source_type?:
@@ -49,6 +51,7 @@ export type GateDueDetails = {
   bills: {
     label: string
     amount: number
+
     due_date:
       | string
       | null
@@ -56,8 +59,11 @@ export type GateDueDetails = {
 }
 
 export function gateDueMessage(
-  details: GateDueDetails,
-  audience: string
+  details:
+    GateDueDetails,
+
+  audience:
+    string
 ) {
   const balance =
     Number(
@@ -65,8 +71,11 @@ export function gateDueMessage(
     ).toLocaleString(
       'en-NG',
       {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
+        minimumFractionDigits:
+          2,
+
+        maximumFractionDigits:
+          2,
       }
     )
 
@@ -78,7 +87,9 @@ export function gateDueMessage(
       {
         timeZone:
           'Africa/Lagos',
-        hour12: false,
+
+        hour12:
+          false,
       }
     ) + ' WAT'
 
@@ -97,19 +108,32 @@ export function gateDueMessage(
         `Visitor ${details.name} entered the estate at ${when}.\n` +
         `Visitor phone: ${details.visitor_phone || 'Not provided'}\n` +
         `Host: ${details.host || 'Unknown'}\n` +
+        `Host email: ${details.host_email || 'Not provided'}\n` +
+        `Host phone: ${details.host_phone || 'Not provided'}\n` +
         `Address: ${details.address}\n` +
-        `Designated billing contact: ${details.billing_contact_name || 'Not assigned'}`
+        `Designated billing contact: ${
+          details.billing_contact_name ||
+          'Not assigned'
+        }`
     } else {
       intro =
         `${details.name} entered the estate at ${when}.\n` +
+        `Email: ${details.email || 'Not provided'}\n` +
+        `Phone: ${details.phone || 'Not provided'}\n` +
         `Address: ${details.address}\n` +
-        `Designated billing contact: ${details.billing_contact_name || 'Not assigned'}`
+        `Designated billing contact: ${
+          details.billing_contact_name ||
+          'Not assigned'
+        }`
     }
   } else if (
     isVisitor
   ) {
     intro =
-      `A visitor named ${details.name} for ${details.host || 'your household'} ` +
+      `A visitor named ${details.name} for ${
+        details.host ||
+        'your household'
+      } ` +
       `was admitted to ${details.address} at ${when}.`
   } else {
     intro =
@@ -120,19 +144,26 @@ export function gateDueMessage(
   const billLines =
     details.bills
       .map(
-        (bill) =>
+        (
+          bill
+        ) =>
           `${bill.label}: NGN ${Number(
             bill.amount
-          ).toFixed(2)}${
+          ).toFixed(
+            2
+          )}${
             bill.due_date
               ? ` (due ${bill.due_date})`
               : ''
           }`
       )
-      .join('\n')
+      .join(
+        '\n'
+      )
 
   const action =
-    audience === 'admin'
+    audience ===
+    'admin'
       ? 'Please review the household account in Zadant.'
       : details
           .billing_contact_name
@@ -149,8 +180,11 @@ export function gateDueMessage(
 }
 
 function subjectFor(
-  details: GateDueDetails,
-  audience: string
+  details:
+    GateDueDetails,
+
+  audience:
+    string
 ) {
   const isVisitor =
     details.source_type ===
@@ -179,10 +213,15 @@ export async function sendGateDueEmails() {
     process.env
       .RESEND_FROM_EMAIL
 
-  if (!apiKey || !from) {
+  if (
+    !apiKey ||
+    !from
+  ) {
     return {
       sent: 0,
+
       failed: 0,
+
       configured:
         false,
     }
@@ -195,21 +234,27 @@ export async function sendGateDueEmails() {
     Date.now() +
     40000
 
-  let sent = 0
-  let failed = 0
+  let sent =
+    0
+
+  let failed =
+    0
 
   while (
     Date.now() <
     deadline
   ) {
     const {
-      data: jobs,
+      data:
+        jobs,
+
       error,
     } =
       await db.rpc(
         'claim_gate_due_emails',
         {
-          p_alert: null,
+          p_alert:
+            null,
         }
       )
 
@@ -219,7 +264,9 @@ export async function sendGateDueEmails() {
       )
     }
 
-    if (!jobs?.length) {
+    if (
+      !jobs?.length
+    ) {
       break
     }
 
@@ -227,7 +274,9 @@ export async function sendGateDueEmails() {
       jobs[0]
 
     const {
-      data: alert,
+      data:
+        alert,
+
       error:
         readError,
     } =
@@ -279,25 +328,27 @@ export async function sendGateDueEmails() {
             },
 
             body:
-              JSON.stringify({
-                from,
+              JSON.stringify(
+                {
+                  from,
 
-                to: [
-                  job.recipient,
-                ],
+                  to: [
+                    job.recipient,
+                  ],
 
-                subject:
-                  subjectFor(
-                    details,
-                    job.audience
-                  ),
+                  subject:
+                    subjectFor(
+                      details,
+                      job.audience
+                    ),
 
-                text:
-                  gateDueMessage(
-                    details,
-                    job.audience
-                  ),
-              }),
+                  text:
+                    gateDueMessage(
+                      details,
+                      job.audience
+                    ),
+                }
+              ),
 
             signal:
               AbortSignal.timeout(
@@ -315,7 +366,8 @@ export async function sendGateDueEmails() {
         typeof body.id ===
           'string'
     } catch {
-      // Keep for retry.
+      // Keep the job queued
+      // for retry.
     }
 
     const {
@@ -344,7 +396,8 @@ export async function sendGateDueEmails() {
                   new Date(
                     Date.now() +
                       60000
-                  ).toISOString(),
+                  )
+                    .toISOString(),
               }
         )
         .eq(
@@ -364,14 +417,18 @@ export async function sendGateDueEmails() {
       )
     }
 
-    if (accepted) {
+    if (
+      accepted
+    ) {
       sent++
     } else {
       failed++
     }
 
     await new Promise(
-      (resolve) =>
+      (
+        resolve
+      ) =>
         setTimeout(
           resolve,
           550
@@ -381,7 +438,10 @@ export async function sendGateDueEmails() {
 
   return {
     sent,
+
     failed,
-    configured: true,
+
+    configured:
+      true,
   }
 }
