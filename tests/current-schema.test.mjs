@@ -75,6 +75,8 @@ const sqlFiles = [
 
   'migration_dashboard_aggregation.sql',
 
+  'migration_residents_directory_pagination.sql',
+
   'migration_human_readable_ids.sql',
 ]
 

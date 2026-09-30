@@ -1,52 +1,21 @@
 'use client'
 
 import {
-  useMemo,
+  FormEvent,
   useState,
 } from 'react'
+
 import Link from 'next/link'
 
-type Resident = {
-  id: string
-  resident_code: string
-  full_name: string
-  phone:
-    | string
-    | null
-  relationship: string
-  is_active: boolean
+import {
+  usePathname,
+  useRouter,
+} from 'next/navigation'
 
-  personalOutstanding:
-    number
-
-  householdOutstanding:
-    number
-
-  managesHouseholdBilling:
-    boolean
-
-  billingContactName:
-    | string
-    | null
-
-  houses:
-    | {
-        address: string
-        house_type:
-          | string
-          | null
-        street_id:
-          | string
-          | null
-
-        streets:
-          | {
-              name: string
-            }
-          | null
-      }
-    | null
-}
+import type {
+  ResidentDirectoryFilters,
+  ResidentDirectoryRow,
+} from '@/lib/residents-directory-server'
 
 const naira = (
   amount: number
@@ -58,184 +27,255 @@ const naira = (
 export function ResidentsTable({
   residents,
   streets,
-  initialHasDues =
-    false,
+  total,
+  page,
+  pageSize,
+  filters,
 }: {
-  initialHasDues?: boolean
   residents:
-    Resident[]
+    ResidentDirectoryRow[]
+
   streets: {
     id: string
     name: string
   }[]
+
+  total: number
+
+  page: number
+
+  pageSize: number
+
+  filters:
+    ResidentDirectoryFilters
 }) {
-  const [
-    dues,
-    setDues,
-  ] = useState(
-    initialHasDues
-      ? 'yes'
-      : 'all'
-  )
+  const router =
+    useRouter()
+
+  const pathname =
+    usePathname()
 
   const [
     query,
     setQuery,
-  ] = useState('')
+  ] =
+    useState(
+      filters.query
+    )
 
-  const [
-    status,
-    setStatus,
-  ] = useState<
-    | 'all'
-    | 'active'
-    | 'inactive'
-  >('all')
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        total /
+          pageSize
+      )
+    )
 
-  const [
-    streetId,
-    setStreetId,
-  ] = useState(
-    'all'
-  )
+  const firstRow =
+    total === 0
+      ? 0
+      : (
+          page -
+          1
+        ) *
+          pageSize +
+        1
 
-  const filtered =
-    useMemo(() => {
-      const q =
+  const lastRow =
+    Math.min(
+      page *
+        pageSize,
+      total
+    )
+
+  function navigate(
+    next: Partial<
+      ResidentDirectoryFilters
+    >
+  ) {
+    const merged = {
+      ...filters,
+      ...next,
+    }
+
+    const params =
+      new URLSearchParams()
+
+    if (
+      merged.query
+    ) {
+      params.set(
+        'q',
+        merged.query
+      )
+    }
+
+    if (
+      merged.street
+    ) {
+      params.set(
+        'street',
+        merged.street
+      )
+    }
+
+    if (
+      merged.status !==
+      'all'
+    ) {
+      params.set(
+        'status',
+        merged.status
+      )
+    }
+
+    if (
+      merged.dues !==
+      'all'
+    ) {
+      params.set(
+        'dues',
+        merged.dues
+      )
+    }
+
+    if (
+      merged.page >
+      1
+    ) {
+      params.set(
+        'page',
+        String(
+          merged.page
+        )
+      )
+    }
+
+    const suffix =
+      params.toString()
+
+    router.push(
+      suffix
+        ? `${pathname}?${suffix}`
+        : pathname
+    )
+  }
+
+  function submitSearch(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault()
+
+    navigate({
+      query:
         query
           .trim()
-          .toLowerCase()
+          .slice(
+            0,
+            120
+          ),
 
-      return residents.filter(
-        (resident) => {
-          const amountManaged =
-            resident
-              .personalOutstanding
-            +
-            resident
-              .householdOutstanding
+      page:
+        1,
+    })
+  }
 
-          if (
-            dues ===
-              'yes' &&
-            amountManaged <=
-              0
-          ) {
-            return false
-          }
+  function occupancy(
+    relationship:
+      string
+  ) {
+    if (
+      relationship ===
+      'owner'
+    ) {
+      return 'Home Owner'
+    }
 
-          if (
-            dues ===
-              'no' &&
-            amountManaged >
-              0
-          ) {
-            return false
-          }
+    if (
+      relationship ===
+      'family_member'
+    ) {
+      return 'Family Member'
+    }
 
-          if (
-            status ===
-              'active' &&
-            !resident.is_active
-          ) {
-            return false
-          }
+    if (
+      relationship ===
+      'tenant'
+    ) {
+      return 'Tenant'
+    }
 
-          if (
-            status ===
-              'inactive' &&
-            resident.is_active
-          ) {
-            return false
-          }
-
-          if (
-            streetId !==
-              'all' &&
-            resident.houses
-              ?.street_id !==
-              streetId
-          ) {
-            return false
-          }
-
-          if (!q) {
-            return true
-          }
-
-          return (
-            resident.resident_code
-              .toLowerCase()
-              .includes(q)
-            ||
-            resident.full_name
-              .toLowerCase()
-              .includes(q)
-            ||
-            (
-              resident
-                .houses
-                ?.address ??
-              ''
-            )
-              .toLowerCase()
-              .includes(q)
-            ||
-            (
-              resident.phone ??
-              ''
-            )
-              .toLowerCase()
-              .includes(q)
-          )
-        }
-      )
-    }, [
-      residents,
-      query,
-      status,
-      streetId,
-      dues,
-    ])
+    return relationship
+  }
 
   return (
     <div>
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <input
-          type="text"
-          value={query}
-          onChange={(
-            event
-          ) =>
-            setQuery(
-              event.target
-                .value
-            )
-          }
-          placeholder="Search by resident ID, name, house, or phone..."
-          className="flex-1 border rounded-lg px-3 py-2 text-sm"
-        />
+      <form
+        onSubmit={
+          submitSearch
+        }
+        className="flex flex-col sm:flex-row gap-3 mb-4"
+      >
+        <div className="flex flex-1 gap-2">
+          <input
+            type="search"
+            value={
+              query
+            }
+            onChange={(
+              event
+            ) =>
+              setQuery(
+                event.target
+                  .value
+              )
+            }
+            placeholder="Search by resident ID, name, house, or phone..."
+            className="flex-1 border rounded-lg px-3 py-2 text-sm"
+          />
+
+          <button
+            type="submit"
+            className="action secondary"
+          >
+            Search
+          </button>
+        </div>
 
         <select
           value={
-            streetId
+            filters.street ??
+            'all'
           }
           onChange={(
             event
           ) =>
-            setStreetId(
-              event.target
-                .value
-            )
+            navigate({
+              street:
+                event.target
+                  .value ===
+                'all'
+                  ? null
+                  : event.target
+                      .value,
+
+              page:
+                1,
+            })
           }
           className="border rounded-lg px-3 py-2 text-sm"
+          aria-label="Filter residents by street"
         >
           <option value="all">
             All streets
           </option>
 
           {streets.map(
-            (street) => (
+            (
+              street
+            ) => (
               <option
                 key={
                   street.id
@@ -254,20 +294,23 @@ export function ResidentsTable({
 
         <select
           value={
-            status
+            filters.status
           }
           onChange={(
             event
           ) =>
-            setStatus(
-              event.target
-                .value as
-                | 'all'
-                | 'active'
-                | 'inactive'
-            )
+            navigate({
+              status:
+                event.target
+                  .value as
+                  ResidentDirectoryFilters['status'],
+
+              page:
+                1,
+            })
           }
           className="border rounded-lg px-3 py-2 text-sm"
+          aria-label="Filter residents by status"
         >
           <option value="all">
             All statuses
@@ -281,20 +324,27 @@ export function ResidentsTable({
             Inactive only
           </option>
         </select>
-      </div>
+      </form>
 
       <div className="flex gap-3 mb-4 items-center flex-wrap">
         <select
           aria-label="Filter residents by dues"
           className="border rounded-lg px-3 py-2 text-sm"
-          value={dues}
+          value={
+            filters.dues
+          }
           onChange={(
             event
           ) =>
-            setDues(
-              event.target
-                .value
-            )
+            navigate({
+              dues:
+                event.target
+                  .value as
+                  ResidentDirectoryFilters['dues'],
+
+              page:
+                1,
+            })
           }
         >
           <option value="all">
@@ -314,13 +364,12 @@ export function ResidentsTable({
           type="button"
           className="action secondary"
           onClick={() => {
-            setDues('all')
-            setQuery('')
-            setStreetId(
-              'all'
+            setQuery(
+              ''
             )
-            setStatus(
-              'all'
+
+            router.push(
+              pathname
             )
           }}
         >
@@ -329,15 +378,15 @@ export function ResidentsTable({
       </div>
 
       <p className="text-xs text-gray-500 mb-2">
-        Showing{' '}
-        {filtered.length}{' '}
-        of{' '}
-        {residents.length}{' '}
-        resident
-        {residents.length ===
-        1
-          ? ''
-          : 's'}
+        {total ===
+        0
+          ? 'No residents found'
+          : `Showing ${firstRow}–${lastRow} of ${total} resident${
+              total ===
+              1
+                ? ''
+                : 's'
+            }`}
       </p>
 
       <div className="bg-white rounded-xl shadow overflow-x-auto border">
@@ -377,8 +426,7 @@ export function ResidentsTable({
               </th>
 
               <th className="p-3">
-                Household
-                billing
+                Household billing
               </th>
 
               <th className="p-3">
@@ -387,9 +435,9 @@ export function ResidentsTable({
           </thead>
 
           <tbody>
-            {filtered.length >
+            {residents.length >
             0 ? (
-              filtered.map(
+              residents.map(
                 (
                   resident
                 ) => (
@@ -412,17 +460,12 @@ export function ResidentsTable({
                     </td>
 
                     <td className="p-3">
-                      {resident
-                        .houses
-                        ?.address ??
+                      {resident.address ??
                         '—'}
                     </td>
 
                     <td className="p-3">
-                      {resident
-                        .houses
-                        ?.streets
-                        ?.name ??
+                      {resident.street_name ??
                         '—'}
                     </td>
 
@@ -432,16 +475,9 @@ export function ResidentsTable({
                     </td>
 
                     <td className="p-3">
-                      {resident.relationship ===
-                      'owner'
-                        ? 'Home Owner'
-                        : resident.relationship ===
-                            'family_member'
-                          ? 'Family Member'
-                          : resident.relationship ===
-                              'tenant'
-                            ? 'Tenant'
-                            : resident.relationship}
+                      {occupancy(
+                        resident.relationship
+                      )}
                     </td>
 
                     <td className="p-3">
@@ -460,8 +496,7 @@ export function ResidentsTable({
 
                     <td className="p-3">
                       {naira(
-                        resident
-                          .personalOutstanding
+                        resident.personalOutstanding
                       )}
                     </td>
 
@@ -469,28 +504,23 @@ export function ResidentsTable({
                       {resident.managesHouseholdBilling ? (
                         <span>
                           {naira(
-                            resident
-                              .householdOutstanding
+                            resident.householdOutstanding
                           )}
 
                           <small className="block text-gray-500 mt-1">
-                            Billing
-                            contact
+                            Billing contact
                           </small>
                         </span>
                       ) : resident.billingContactName ? (
                         <span className="text-gray-500">
-                          Managed
-                          by{' '}
+                          Managed by{' '}
                           {
                             resident.billingContactName
                           }
                         </span>
                       ) : (
                         <span className="text-gray-500">
-                          No
-                          billing
-                          contact
+                          No billing contact
                         </span>
                       )}
                     </td>
@@ -509,19 +539,74 @@ export function ResidentsTable({
             ) : (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={
+                    10
+                  }
                   className="p-6 text-center text-gray-500"
                 >
-                  {residents.length ===
-                  0
-                    ? 'No residents yet.'
-                    : 'No residents match your search.'}
+                  No residents match your filters.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {totalPages >
+        1 && (
+        <div className="flex items-center justify-between gap-3 mt-4">
+          <button
+            type="button"
+            className="action secondary"
+            disabled={
+              page <=
+              1
+            }
+            onClick={() =>
+              navigate({
+                page:
+                  Math.max(
+                    1,
+                    page -
+                      1
+                  ),
+              })
+            }
+          >
+            ← Previous
+          </button>
+
+          <span className="text-sm text-gray-500">
+            Page{' '}
+            {page}{' '}
+            of{' '}
+            {
+              totalPages
+            }
+          </span>
+
+          <button
+            type="button"
+            className="action secondary"
+            disabled={
+              page >=
+              totalPages
+            }
+            onClick={() =>
+              navigate({
+                page:
+                  Math.min(
+                    totalPages,
+                    page +
+                      1
+                  ),
+              })
+            }
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
