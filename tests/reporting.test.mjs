@@ -330,6 +330,114 @@ test(
 )
 
 test(
+  'dashboard fallback does not seed hard-coded recurring charge names',
+  () => {
+    const empty =
+      summarize(
+        [],
+        [],
+        []
+      )
+
+    assert.equal(
+      empty
+        .charges
+        .length,
+      0
+    )
+
+    const renamed =
+      summarize(
+        [
+          {
+            id:
+              'renamed-charge-invoice',
+
+            house_id:
+              'house-1',
+
+            resident_id:
+              null,
+
+            amount:
+              5000,
+
+            amount_paid:
+              0,
+
+            due_date:
+              '2026-10-31',
+
+            due_types: {
+              name:
+                'Estate Operations Charge',
+            },
+
+            houses:
+              null,
+          },
+        ],
+        [],
+        []
+      )
+
+    assert.equal(
+      renamed
+        .charges
+        .length,
+      1
+    )
+
+    assert.equal(
+      renamed
+        .charges[0]
+        .name,
+      'Estate Operations Charge'
+    )
+
+    assert.equal(
+      renamed
+        .charges[0]
+        .billed,
+      5000
+    )
+
+    assert.equal(
+      renamed
+        .charges[0]
+        .outstanding,
+      5000
+    )
+
+    assert.equal(
+      renamed
+        .charges
+        .some(
+          (
+            row
+          ) =>
+            row.name ===
+              'Service Charge'
+        ),
+      false
+    )
+
+    assert.equal(
+      renamed
+        .charges
+        .some(
+          (
+            row
+          ) =>
+            row.name ===
+              'CDA Levy'
+        ),
+      false
+    )
+  }
+)
+
+test(
   'period presets handle year boundaries, leap February and estate timezone',
   () => {
     assert.equal(

@@ -100,6 +100,8 @@ const sqlFiles = [
   'migration_collected_report_transaction_ids.sql',
 
   'migrations/20260930190015_due_type_capabilities.sql',
+
+  'migrations/20260930192416_due_type_reporting_capabilities.sql',
 ]
 
 function sql(
@@ -3127,6 +3129,505 @@ test(
       assert.equal(
         ordinaryGenerated.n,
         0
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'future reporting and dashboard use due type capabilities instead of charge names',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const adminAuthId =
+        '55555555-5555-4555-8555-555555555555'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES (
+            $1::uuid,
+            'reporting-capability-admin@example.test'
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      await db.query(
+        `
+          INSERT INTO public.admins (
+            auth_user_id,
+            full_name,
+            role
+          )
+
+          VALUES (
+            $1::uuid,
+            'Reporting Capability Admin',
+            'admin'
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Reporting Capability Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const house =
+        await first(
+          db,
+          `
+            INSERT INTO public.houses (
+              address,
+              street_id,
+              house_number
+            )
+
+            VALUES (
+              'House 975',
+              $1::uuid,
+              '975'
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      const serviceCharge =
+        await first(
+          db,
+          `
+            SELECT
+              id,
+              amount
+
+            FROM public.due_types
+
+            WHERE name =
+              'Service Charge'
+          `
+        )
+
+      const cdaLevy =
+        await first(
+          db,
+          `
+            SELECT
+              id
+
+            FROM public.due_types
+
+            WHERE name =
+              'CDA Levy'
+          `
+        )
+
+      assert.ok(
+        serviceCharge
+      )
+
+      assert.ok(
+        cdaLevy
+      )
+
+      /*
+       * Rename a configured recurring charge.
+       *
+       * Reports must continue working because the capability
+       * is attached to the due type, not its name.
+       */
+      await db.query(
+        `
+          UPDATE public.due_types
+
+          SET name =
+            'Estate Operations Charge'
+
+          WHERE id =
+            $1::uuid
+        `,
+        [
+          serviceCharge.id,
+        ]
+      )
+
+      const ordinary =
+        await first(
+          db,
+          `
+            INSERT INTO public.due_types (
+              name,
+              amount,
+              frequency,
+              billing_scope
+            )
+
+            VALUES (
+              'Ordinary Monthly Reporting Charge',
+              7500,
+              'monthly',
+              'house'
+            )
+
+            RETURNING
+              id,
+              active,
+              auto_generate
+          `
+        )
+
+      assert.equal(
+        ordinary.active,
+        true
+      )
+
+      assert.equal(
+        ordinary.auto_generate,
+        false
+      )
+
+      /*
+       * Calculate the expected projection while running as
+       * the database owner.
+       *
+       * Once we switch to authenticated below, the test must
+       * exercise reporting only through the protected RPCs.
+       */
+      const expectedFutureTotal =
+        await first(
+          db,
+          `
+            SELECT
+              SUM(
+                amount
+              )::numeric
+                AS amount
+
+            FROM public.due_types
+
+            WHERE
+              active =
+                true
+
+              AND auto_generate =
+                true
+
+              AND billing_scope =
+                'house'
+
+              AND frequency =
+                'monthly'
+          `
+        )
+
+      assert.ok(
+        expectedFutureTotal
+      )
+
+      await db.exec(
+        'SET ROLE authenticated'
+      )
+
+      await db.query(
+        `
+          SELECT set_config(
+            'request.jwt.claim.sub',
+            $1::text,
+            false
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      /*
+       * Future projections must follow capability flags,
+       * including after a configured charge is renamed.
+       */
+      const future =
+        await first(
+          db,
+          `
+            SELECT
+              public.admin_report_page(
+                'future',
+                '2026-10-01',
+                '2026-10-31',
+                '2026-09-30',
+                50,
+                0
+              ) AS result
+          `
+        )
+
+      assert.equal(
+        Number(
+          future
+            .result
+            .total
+        ),
+        2
+      )
+
+      assert.equal(
+        future
+          .result
+          .rows
+          .length,
+        2
+      )
+
+      const futureCharges =
+        new Set(
+          future
+            .result
+            .rows
+            .map(
+              (
+                row
+              ) =>
+                row.charge
+            )
+        )
+
+      assert.equal(
+        futureCharges.has(
+          'Estate Operations Charge'
+        ),
+        true
+      )
+
+      assert.equal(
+        futureCharges.has(
+          'CDA Levy'
+        ),
+        true
+      )
+
+      assert.equal(
+        futureCharges.has(
+          'Service Charge'
+        ),
+        false
+      )
+
+      assert.equal(
+        futureCharges.has(
+          'Ordinary Monthly Reporting Charge'
+        ),
+        false
+      )
+
+      assert.equal(
+        Number(
+          future
+            .result
+            .total_amount
+        ),
+        Number(
+          expectedFutureTotal.amount
+        )
+      )
+
+      /*
+       * Dashboard zero-value seed rows must also come from
+       * capability-enabled due types rather than names.
+       */
+      const dashboard =
+        await first(
+          db,
+          `
+            SELECT
+              public.admin_dashboard_summary(
+                NULL::date,
+                NULL::date
+              ) AS result
+          `
+        )
+
+      const dashboardNames =
+        dashboard
+          .result
+          .charges
+          .map(
+            (
+              row
+            ) =>
+              row.name
+          )
+
+      assert.deepEqual(
+        dashboardNames,
+        [
+          'CDA Levy',
+          'Estate Operations Charge',
+        ]
+      )
+
+      assert.equal(
+        dashboardNames.includes(
+          'Service Charge'
+        ),
+        false
+      )
+
+      assert.equal(
+        dashboardNames.includes(
+          'Ordinary Monthly Reporting Charge'
+        ),
+        false
+      )
+
+      assert.ok(
+        dashboard
+          .result
+          .charges
+          .every(
+            (
+              row
+            ) =>
+              Number(
+                row.billed
+              ) ===
+                0 &&
+              Number(
+                row.collected
+              ) ===
+                0 &&
+              Number(
+                row.outstanding
+              ) ===
+                0
+          )
+      )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      /*
+       * Existing real future invoices must still be shown even
+       * when their due type is not configured for automatic
+       * projection.
+       */
+      await db.query(
+        `
+          INSERT INTO public.invoices (
+            house_id,
+            due_type_id,
+            period_label,
+            period_start,
+            period_end,
+            amount,
+            amount_paid,
+            status,
+            due_date
+          )
+
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            'October 2026',
+            '2026-10-01',
+            '2026-10-31',
+            7500,
+            0,
+            'unpaid',
+            '2026-10-31'
+          )
+        `,
+        [
+          house.id,
+          ordinary.id,
+        ]
+      )
+
+      await db.exec(
+        'SET ROLE authenticated'
+      )
+
+      await db.query(
+        `
+          SELECT set_config(
+            'request.jwt.claim.sub',
+            $1::text,
+            false
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      const futureWithRealInvoice =
+        await first(
+          db,
+          `
+            SELECT
+              public.admin_report_page(
+                'future',
+                '2026-10-01',
+                '2026-10-31',
+                '2026-09-30',
+                50,
+                0
+              ) AS result
+          `
+        )
+
+      const ordinaryRows =
+        futureWithRealInvoice
+          .result
+          .rows
+          .filter(
+            (
+              row
+            ) =>
+              row.charge ===
+                'Ordinary Monthly Reporting Charge'
+          )
+
+      assert.equal(
+        ordinaryRows.length,
+        1
+      )
+
+      assert.equal(
+        ordinaryRows[0].status,
+        'unpaid'
+      )
+
+      await db.exec(
+        'RESET ROLE'
       )
     } finally {
       await db.close()
