@@ -73,6 +73,8 @@ const sqlFiles = [
 
   'migration_consolidate_rls_policies.sql',
 
+  'migration_dashboard_aggregation.sql',
+
   'migration_human_readable_ids.sql',
 ]
 
