@@ -1,12 +1,28 @@
 import { z } from 'zod'
-import { dispatchSms } from '@/lib/sms-dispatch'
+
 import {
+  after,
   NextRequest,
   NextResponse,
 } from 'next/server'
+
 import crypto from 'crypto'
-import { createClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/service'
+
+import {
+  createClient,
+} from '@/lib/supabase/server'
+
+import {
+  createServiceClient,
+} from '@/lib/supabase/service'
+
+import {
+  queueSmsNotification,
+} from '@/lib/notification-queue'
+
+import {
+  processNotificationQueue,
+} from '@/lib/notification-worker'
 
 export async function POST(
   req: NextRequest,
@@ -25,7 +41,9 @@ export async function POST(
     await createClient()
 
   const {
-    data: { user },
+    data: {
+      user,
+    },
   } =
     await supabase.auth.getUser()
 
@@ -36,17 +54,23 @@ export async function POST(
           'Not signed in',
       },
       {
-        status: 401,
+        status:
+          401,
       }
     )
   }
 
   const {
-    data: admin,
+    data:
+      admin,
   } =
     await supabase
-      .from('admins')
-      .select('id, role')
+      .from(
+        'admins'
+      )
+      .select(
+        'id, role'
+      )
       .eq(
         'auth_user_id',
         user.id
@@ -58,7 +82,9 @@ export async function POST(
     ![
       'admin',
       'super_admin',
-    ].includes(admin.role)
+    ].includes(
+      admin.role
+    )
   ) {
     return NextResponse.json(
       {
@@ -66,7 +92,8 @@ export async function POST(
           'Not authorized',
       },
       {
-        status: 403,
+        status:
+          403,
       }
     )
   }
@@ -75,7 +102,9 @@ export async function POST(
     createServiceClient()
 
   const {
-    data: reg,
+    data:
+      reg,
+
     error:
       registrationError,
   } =
@@ -84,7 +113,10 @@ export async function POST(
         'registration_requests'
       )
       .select('*')
-      .eq('id', id)
+      .eq(
+        'id',
+        id
+      )
       .single()
 
   if (
@@ -97,7 +129,8 @@ export async function POST(
           'Registration request not found',
       },
       {
-        status: 404,
+        status:
+          404,
       }
     )
   }
@@ -112,7 +145,8 @@ export async function POST(
           'This request has already been reviewed',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -121,12 +155,14 @@ export async function POST(
     z
       .object({
         move_in_date:
-          z.iso
+          z
+            .iso
             .date()
             .optional(),
 
         property_allocation_date:
-          z.iso
+          z
+            .iso
             .date()
             .optional(),
       })
@@ -134,7 +170,9 @@ export async function POST(
       .safeParse(
         await req
           .json()
-          .catch(() => ({}))
+          .catch(
+            () => ({})
+          )
       )
 
   if (!input.success) {
@@ -144,7 +182,8 @@ export async function POST(
           'Enter valid move-in and property allocation dates.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -178,7 +217,8 @@ export async function POST(
           'Enter valid move-in and property allocation dates before approval.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -190,14 +230,16 @@ export async function POST(
           'This registration does not have a valid street.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
 
   const email =
     String(
-      reg.email ?? ''
+      reg.email ??
+        ''
     )
       .trim()
       .toLowerCase()
@@ -209,7 +251,8 @@ export async function POST(
           'This registration does not have a valid email address.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -221,11 +264,14 @@ export async function POST(
   const {
     data:
       duplicateResident,
+
     error:
       duplicateLookupError,
   } =
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .select(
         'id, full_name, auth_user_id'
       )
@@ -237,22 +283,29 @@ export async function POST(
         'email',
         email
       )
-      .limit(1)
+      .limit(
+        1
+      )
       .maybeSingle()
 
-  if (duplicateLookupError) {
+  if (
+    duplicateLookupError
+  ) {
     return NextResponse.json(
       {
         error:
           'Could not verify whether this resident already exists.',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
 
-  if (duplicateResident) {
+  if (
+    duplicateResident
+  ) {
     return NextResponse.json(
       {
         error:
@@ -263,7 +316,8 @@ export async function POST(
           }.`,
       },
       {
-        status: 409,
+        status:
+          409,
       }
     )
   }
@@ -278,7 +332,9 @@ export async function POST(
    * duplicate billing.
    */
   const {
-    data: houseId,
+    data:
+      houseId,
+
     error:
       houseError,
   } =
@@ -319,7 +375,8 @@ export async function POST(
             'The registration database migration has not been applied yet. Run the database migrations in Supabase, then try again.',
         },
         {
-          status: 503,
+          status:
+            503,
         }
       )
     }
@@ -331,7 +388,8 @@ export async function POST(
           'Could not resolve the property',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -347,11 +405,14 @@ export async function POST(
     const {
       data:
         existingOwner,
+
       error:
         ownerLookupError,
     } =
       await service
-        .from('residents')
+        .from(
+          'residents'
+        )
         .select(
           'id, full_name'
         )
@@ -367,29 +428,37 @@ export async function POST(
           'is_active',
           true
         )
-        .limit(1)
+        .limit(
+          1
+        )
         .maybeSingle()
 
-    if (ownerLookupError) {
+    if (
+      ownerLookupError
+    ) {
       return NextResponse.json(
         {
           error:
             'Could not verify the existing Home Owner for this property.',
         },
         {
-          status: 500,
+          status:
+            500,
         }
       )
     }
 
-    if (existingOwner) {
+    if (
+      existingOwner
+    ) {
       return NextResponse.json(
         {
           error:
             `House ${reg.house_number} already has an active Home Owner: ${existingOwner.full_name}. Change this applicant to Tenant or Family Member if appropriate.`,
         },
         {
-          status: 409,
+          status:
+            409,
         }
       )
     }
@@ -401,13 +470,21 @@ export async function POST(
       reg.other_names,
       reg.surname,
     ]
-      .map((value) =>
-        String(
-          value ?? ''
-        ).trim()
+      .map(
+        (
+          value
+        ) =>
+          String(
+            value ??
+              ''
+          ).trim()
       )
-      .filter(Boolean)
-      .join(' ')
+      .filter(
+        Boolean
+      )
+      .join(
+        ' '
+      )
 
   if (!fullName) {
     return NextResponse.json(
@@ -416,7 +493,8 @@ export async function POST(
           'This registration does not contain a valid resident name.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -431,12 +509,16 @@ export async function POST(
    * Supabase Auth invite succeeds.
    */
   const {
-    data: resident,
+    data:
+      resident,
+
     error:
       residentError,
   } =
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .insert({
         house_id:
           houseId,
@@ -492,12 +574,14 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          residentError?.message ??
+          residentError
+            ?.message ??
           'Could not create resident',
       },
       {
         status:
-          residentError?.code ===
+          residentError
+            ?.code ===
           '23505'
             ? 409
             : 500,
@@ -526,7 +610,9 @@ export async function POST(
      * their login.
      */
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .delete()
       .eq(
         'id',
@@ -539,13 +625,16 @@ export async function POST(
           'NEXT_PUBLIC_SITE_URL is not configured. Resident approval was not completed.',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
 
   const {
-    data: invited,
+    data:
+      invited,
+
     error:
       inviteError,
   } =
@@ -570,7 +659,9 @@ export async function POST(
      * failed.
      */
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .delete()
       .eq(
         'id',
@@ -580,11 +671,13 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          inviteError?.message ??
+          inviteError
+            ?.message ??
           'Could not send the portal invitation',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
@@ -602,14 +695,17 @@ export async function POST(
 
   if (
     !invitedEmail ||
-    invitedEmail !== email
+    invitedEmail !==
+      email
   ) {
     /*
      * Do NOT link a mismatched Auth user
      * to this resident.
      */
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .delete()
       .eq(
         'id',
@@ -634,7 +730,8 @@ export async function POST(
           'The portal account email did not match the resident email. No resident login was linked.',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
@@ -648,7 +745,9 @@ export async function POST(
       linkError,
   } =
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .update({
         auth_user_id:
           invited.user.id,
@@ -662,7 +761,9 @@ export async function POST(
         null
       )
 
-  if (linkError) {
+  if (
+    linkError
+  ) {
     /*
      * Don't leave an ambiguous account
      * relationship behind.
@@ -675,7 +776,9 @@ export async function POST(
       )
 
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .delete()
       .eq(
         'id',
@@ -688,7 +791,8 @@ export async function POST(
           'The invitation was created, but the resident account could not be linked safely. The incomplete account was rolled back.',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
@@ -699,11 +803,14 @@ export async function POST(
   const {
     data:
       linkedResident,
+
     error:
       linkedResidentError,
   } =
     await service
-      .from('residents')
+      .from(
+        'residents'
+      )
       .select(
         'id, email, auth_user_id'
       )
@@ -716,7 +823,8 @@ export async function POST(
   if (
     linkedResidentError ||
     !linkedResident ||
-    linkedResident.auth_user_id !==
+    linkedResident
+      .auth_user_id !==
       invited.user.id ||
     linkedResident.email
       ?.trim()
@@ -729,7 +837,8 @@ export async function POST(
           'Resident account verification failed after invitation. Please contact the administrator before retrying.',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
@@ -772,25 +881,80 @@ export async function POST(
         'pending'
       )
 
-  if (approvalError) {
+  if (
+    approvalError
+  ) {
     return NextResponse.json(
       {
         error:
           'The resident account was created, but saving the registration approval failed. Please contact the administrator before retrying.',
       },
       {
-        status: 500,
+        status:
+          500,
       }
     )
   }
 
+  /*
+   * Queue the approval SMS instead of
+   * making the KudiSMS provider call
+   * inside the approval request.
+   *
+   * The event key is unique, so the
+   * same registration cannot create
+   * duplicate approval SMS jobs.
+   */
   const sms =
-    await dispatchSms(
-      `registration:${id}`,
-      'registration',
-      reg.phone ?? '',
-      'Zadant: Your estate registration is approved. Check your email, including spam, for the invitation to set your password and access the resident portal.'
+    await queueSmsNotification({
+      eventKey:
+        `registration:${id}`,
+
+      kind:
+        'registration',
+
+      phone:
+        reg.phone ??
+        '',
+
+      message:
+        'Zadant: Your estate registration is approved. Check your email, including spam, for the invitation to set your password and access the resident portal.',
+    })
+
+  /*
+   * Try to process the queued message
+   * immediately after the response.
+   *
+   * If this fails or times out, the
+   * notification remains in the durable
+   * outbox and the notifications cron
+   * will process it later.
+   */
+  if (
+    sms.status ===
+    'queued'
+  ) {
+    after(
+      async () => {
+        try {
+          await processNotificationQueue({
+            kind:
+              'registration',
+
+            maxJobs:
+              10,
+
+            deadlineMs:
+              15000,
+          })
+        } catch {
+          console.error(
+            'Registration SMS remains queued for background delivery'
+          )
+        }
+      }
     )
+  }
 
   return NextResponse.json({
     email,

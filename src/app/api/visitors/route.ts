@@ -1,11 +1,28 @@
-import { dispatchSms } from '@/lib/sms-dispatch'
-import { normalizeNigerianPhone } from '@/lib/sms'
+import {
+  after,
+  NextResponse,
+} from 'next/server'
+
+import {
+  queueSmsNotification,
+} from '@/lib/notification-queue'
+
+import {
+  processNotificationQueue,
+} from '@/lib/notification-worker'
+
+import {
+  normalizeNigerianPhone,
+} from '@/lib/sms'
+
 import {
   visitorMessage,
   type VisitorPass,
 } from '@/lib/visitor-message'
-import { createClient } from '@/lib/supabase/server'
-import { NextResponse } from 'next/server'
+
+import {
+  createClient,
+} from '@/lib/supabase/server'
 
 export async function POST(
   request: Request
@@ -14,7 +31,9 @@ export async function POST(
     await createClient()
 
   const {
-    data: { user },
+    data: {
+      user,
+    },
   } =
     await db.auth.getUser()
 
@@ -25,7 +44,8 @@ export async function POST(
           'Please sign in',
       },
       {
-        status: 401,
+        status:
+          401,
       }
     )
   }
@@ -33,7 +53,10 @@ export async function POST(
   const body =
     await request
       .json()
-      .catch(() => null)
+      .catch(
+        () =>
+          null
+      )
 
   if (
     !body ||
@@ -47,7 +70,8 @@ export async function POST(
           'Visitor name is required.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -55,7 +79,8 @@ export async function POST(
   if (
     body.visitorName
       .trim()
-      .length > 100
+      .length >
+    100
   ) {
     return NextResponse.json(
       {
@@ -63,7 +88,8 @@ export async function POST(
           'Visitor name must be 100 characters or fewer.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -83,19 +109,22 @@ export async function POST(
           'Enter a valid expiry time.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
 
   let storedPhone:
     | string
-    | null = null
+    | null =
+      null
 
-  if (body.visitorPhone) {
+  if (
+    body.visitorPhone
+  ) {
     if (
-      typeof body
-        .visitorPhone !==
+      typeof body.visitorPhone !==
       'string'
     ) {
       return NextResponse.json(
@@ -104,7 +133,8 @@ export async function POST(
             'Enter a valid visitor mobile number.',
         },
         {
-          status: 400,
+          status:
+            400,
         }
       )
     }
@@ -121,7 +151,8 @@ export async function POST(
             'Enter a valid Nigerian visitor mobile number, or leave it blank.',
         },
         {
-          status: 400,
+          status:
+            400,
         }
       )
     }
@@ -159,7 +190,8 @@ export async function POST(
           error.message,
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -169,15 +201,50 @@ export async function POST(
 
   const sms =
     storedPhone
-      ? await dispatchSms(
-          `visitor:${pass.id}`,
-          'visitor',
-          storedPhone,
-          visitorMessage(
-            pass
-          )
+      ? await queueSmsNotification(
+          {
+            eventKey:
+              `visitor:${pass.id}`,
+
+            kind:
+              'visitor',
+
+            phone:
+              storedPhone,
+
+            message:
+              visitorMessage(
+                pass
+              ),
+          }
         )
       : null
+
+  if (
+    sms?.status ===
+    'queued'
+  ) {
+    after(
+      async () => {
+        try {
+          await processNotificationQueue({
+            kind:
+              'visitor',
+
+            maxJobs:
+              10,
+
+            deadlineMs:
+              15000,
+          })
+        } catch {
+          console.error(
+            'Visitor SMS remains queued for background delivery'
+          )
+        }
+      }
+    )
+  }
 
   return NextResponse.json(
     {
@@ -185,7 +252,8 @@ export async function POST(
       sms,
     },
     {
-      status: 201,
+      status:
+        201,
     }
   )
 }
@@ -197,7 +265,9 @@ export async function DELETE(
     await createClient()
 
   const {
-    data: { user },
+    data: {
+      user,
+    },
   } =
     await db.auth.getUser()
 
@@ -208,7 +278,8 @@ export async function DELETE(
           'Please sign in',
       },
       {
-        status: 401,
+        status:
+          401,
       }
     )
   }
@@ -216,7 +287,10 @@ export async function DELETE(
   const body =
     await request
       .json()
-      .catch(() => null)
+      .catch(
+        () =>
+          null
+      )
 
   if (
     !body ||
@@ -232,12 +306,15 @@ export async function DELETE(
           'Choose a valid pass',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
 
-  const { error } =
+  const {
+    error,
+  } =
     await db.rpc(
       'cancel_visitor_pass',
       {
@@ -253,10 +330,12 @@ export async function DELETE(
             error.message,
         },
         {
-          status: 400,
+          status:
+            400,
         }
       )
     : NextResponse.json({
-        ok: true,
+        ok:
+          true,
       })
 }
