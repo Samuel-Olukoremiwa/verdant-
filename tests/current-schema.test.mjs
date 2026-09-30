@@ -88,6 +88,8 @@ const sqlFiles = [
   'migration_gate_email_outbox_bridge.sql',
 
   'migration_gate_email_outbox_cutover.sql',
+
+  'migration_registration_approval_claim.sql',
 ]
 
 function sql(
@@ -306,6 +308,21 @@ test(
         [
           'registration_requests',
           'emergency_contact_phone',
+        ],
+
+        [
+          'registration_requests',
+          'approval_claimed_by',
+        ],
+
+        [
+          'registration_requests',
+          'approval_claim_token',
+        ],
+
+        [
+          'registration_requests',
+          'approval_claimed_at',
         ],
       ]
 
