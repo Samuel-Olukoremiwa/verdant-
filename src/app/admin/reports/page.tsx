@@ -1,27 +1,41 @@
 'use client'
 
-import { formatDateGb } from '@/lib/date-format'
-
-import { DateField } from '@/components/date-field'
-
 import {
   useEffect,
   useState,
 } from 'react'
 
 import {
+  DateField,
+} from '@/components/date-field'
+
+import {
+  formatDateGb,
+} from '@/lib/date-format'
+
+import {
   REPORT_LABELS,
   periodRange,
-  reportCsv,
-  type ReportType,
-  type ReportRow as Row,
   type PeriodPreset,
+  type ReportRow as Row,
+  type ReportType,
 } from '@/lib/report-format'
 
 const naira = (
-  n: number
+  value: number
 ) =>
-  `₦${n.toLocaleString()}`
+  `₦${value.toLocaleString(
+    'en-NG'
+  )}`
+
+type ReportResponse = {
+  rows?: Row[]
+  total?: number
+  totalAmount?: number
+  page?: number
+  pageSize?: number
+  error?: string
+}
 
 export default function ReportsPage() {
   const [
@@ -33,11 +47,18 @@ export default function ReportsPage() {
     )
 
   const [
-    { from, to },
+    {
+      from,
+      to,
+    },
     setRange,
-  ] = useState(() =>
-    periodRange('month')
-  )
+  ] =
+    useState(
+      () =>
+        periodRange(
+          'month'
+        )
+    )
 
   const [
     period,
@@ -48,219 +69,429 @@ export default function ReportsPage() {
     )
 
   const [
-    exporting,
-    setExporting,
-  ] = useState(false)
-
-  const [
     rows,
     setRows,
   ] =
-    useState<Row[]>([])
+    useState<Row[]>(
+      []
+    )
+
+  const [
+    total,
+    setTotal,
+  ] =
+    useState(
+      0
+    )
+
+  const [
+    totalAmount,
+    setTotalAmount,
+  ] =
+    useState(
+      0
+    )
+
+  const [
+    page,
+    setPage,
+  ] =
+    useState(
+      1
+    )
+
+  const [
+    pageSize,
+    setPageSize,
+  ] =
+    useState(
+      50
+    )
 
   const [
     loading,
     setLoading,
-  ] = useState(true)
+  ] =
+    useState(
+      true
+    )
+
+  const [
+    exporting,
+    setExporting,
+  ] =
+    useState(
+      false
+    )
 
   const [
     error,
     setError,
-  ] = useState<
-    string | null
-  >(null)
-
-  useEffect(() => {
-    let active = true
-
-    const controller =
-      new AbortController()
-
-    if (
-      !from ||
-      !to ||
-      from > to
-    ) {
-      return
-    }
-
-    const params =
-      new URLSearchParams({
-        type,
-        from,
-        to,
-      })
-
-    fetch(
-      `/api/admin/reports?${params}`,
-      {
-        signal:
-          controller.signal,
-      }
+  ] =
+    useState<
+      string | null
+    >(
+      null
     )
-      .then(
-        async (
-          response
-        ) => {
-          const data =
-            await response.json()
 
-          if (
-            !response.ok ||
-            data.error
-          ) {
-            throw new Error(
-              data.error ||
-                'Failed to load report'
-            )
+  useEffect(
+    () => {
+      let active =
+        true
+
+      const controller =
+        new AbortController()
+
+      if (
+        !from ||
+        !to ||
+        from > to
+      ) {
+        return () => {
+          controller.abort()
+        }
+      }
+
+      const params =
+        new URLSearchParams(
+          {
+            type,
+            from,
+            to,
+            page:
+              String(
+                page
+              ),
           }
+        )
 
-          return data
+      fetch(
+        `/api/admin/reports?${params}`,
+        {
+          signal:
+            controller.signal,
         }
       )
-      .then((data) => {
-        if (active) {
-          setRows(
-            data.rows ?? []
-          )
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : 'Failed to load report'
-          )
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false)
-        }
-      })
+        .then(
+          async (
+            response
+          ) => {
+            const data =
+              await response.json() as ReportResponse
 
-    return () => {
-      active = false
-      controller.abort()
-    }
-  }, [
-    type,
-    from,
-    to,
-  ])
+            if (
+              !response.ok ||
+              data.error
+            ) {
+              throw new Error(
+                data.error ||
+                  'Failed to load report'
+              )
+            }
+
+            return data
+          }
+        )
+        .then(
+          (
+            data
+          ) => {
+            if (
+              !active
+            ) {
+              return
+            }
+
+            setRows(
+              data.rows ??
+                []
+            )
+
+            setTotal(
+              Number(
+                data.total ??
+                  0
+              )
+            )
+
+            setTotalAmount(
+              Number(
+                data.totalAmount ??
+                  0
+              )
+            )
+
+            setPageSize(
+              Number(
+                data.pageSize ??
+                  50
+              )
+            )
+          }
+        )
+        .catch(
+          (
+            err
+          ) => {
+            if (
+              active &&
+              err?.name !==
+                'AbortError'
+            ) {
+              setRows(
+                []
+              )
+
+              setTotal(
+                0
+              )
+
+              setTotalAmount(
+                0
+              )
+
+              setError(
+                err instanceof
+                  Error
+                  ? err.message
+                  : 'Failed to load report'
+              )
+            }
+          }
+        )
+        .finally(
+          () => {
+            if (
+              active
+            ) {
+              setLoading(
+                false
+              )
+            }
+          }
+        )
+
+      return () => {
+        active =
+          false
+
+        controller.abort()
+      }
+    },
+    [
+      type,
+      from,
+      to,
+      page,
+    ]
+  )
+
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        total /
+          pageSize
+      )
+    )
+
+  const firstRow =
+    total ===
+    0
+      ? 0
+      : (
+          page -
+          1
+        ) *
+          pageSize +
+        1
+
+  const lastRow =
+    Math.min(
+      page *
+        pageSize,
+      total
+    )
 
   function changeFilters(
     next: {
-      type?: ReportType
-      from?: string
-      to?: string
+      type?:
+        ReportType
+
+      from?:
+        string
+
+      to?:
+        string
     }
   ) {
     const nextFrom =
-      next.from ?? from
+      next.from ??
+      from
 
     const nextTo =
-      next.to ?? to
-
-    if (
-      (
-        !next.type ||
-        next.type === type
-      ) &&
-      nextFrom === from &&
-      nextTo === to
-    ) {
-      return
-    }
+      next.to ??
+      to
 
     if (
       !nextFrom ||
       !nextTo ||
-      nextFrom > nextTo
+      nextFrom >
+        nextTo
     ) {
       setRange({
-        from: nextFrom,
-        to: nextTo,
+        from:
+          nextFrom,
+
+        to:
+          nextTo,
       })
 
-      setRows([])
+      setRows(
+        []
+      )
+
+      setTotal(
+        0
+      )
+
+      setTotalAmount(
+        0
+      )
 
       setError(
         'Choose a valid date range'
       )
 
-      setLoading(false)
+      setLoading(
+        false
+      )
 
       return
     }
 
-    setLoading(true)
-    setError(null)
-    setRows([])
+    const nextType =
+      next.type ??
+      type
 
-    if (next.type) {
-      setType(next.type)
+    if (
+      nextType ===
+        type &&
+      nextFrom ===
+        from &&
+      nextTo ===
+        to
+    ) {
+      return
     }
 
-    setRange(
-      (current) => ({
-        from:
-          next.from ??
-          current.from,
-
-        to:
-          next.to ??
-          current.to,
-      })
+    setLoading(
+      true
     )
+
+    setError(
+      null
+    )
+
+    setRows(
+      []
+    )
+
+    setPage(
+      1
+    )
+
+    if (
+      next.type
+    ) {
+      setType(
+        next.type
+      )
+    }
+
+    setRange({
+      from:
+        nextFrom,
+
+      to:
+        nextTo,
+    })
   }
 
-  function exportCsv() {
-    const csv =
-      reportCsv(
-        type,
-        rows,
-        from,
-        to
-      )
-
-    const blob =
-      new Blob(
-        [csv],
+  function exportUrl(
+    format:
+      'json' |
+      'csv'
+  ) {
+    const params =
+      new URLSearchParams(
         {
-          type:
-            'text/csv;charset=utf-8;',
+          type,
+          from,
+          to,
+          mode:
+            'export',
+          format,
         }
       )
 
-    const url =
-      URL.createObjectURL(
-        blob
-      )
+    return `/api/admin/reports?${params}`
+  }
 
-    const a =
+  function exportCsv() {
+    setError(
+      null
+    )
+
+    const link =
       document.createElement(
         'a'
       )
 
-    a.href = url
+    link.href =
+      exportUrl(
+        'csv'
+      )
 
-    a.download =
-      `${type}-report-${from}-to-${to}.csv`
-
-    a.click()
-
-    URL.revokeObjectURL(
-      url
+    document.body.appendChild(
+      link
     )
+
+    link.click()
+
+    link.remove()
   }
 
   async function exportPdf() {
-    setExporting(true)
-    setError(null)
+    setExporting(
+      true
+    )
+
+    setError(
+      null
+    )
 
     try {
+      const response =
+        await fetch(
+          exportUrl(
+            'json'
+          )
+        )
+
+      const data =
+        await response.json() as ReportResponse
+
+      if (
+        !response.ok ||
+        data.error
+      ) {
+        throw new Error(
+          data.error ||
+            'PDF export failed'
+        )
+      }
+
       const {
         createReportPdf,
       } =
@@ -271,7 +502,8 @@ export default function ReportsPage() {
       const pdf =
         await createReportPdf(
           type,
-          rows,
+          data.rows ??
+            [],
           from,
           to
         )
@@ -279,38 +511,49 @@ export default function ReportsPage() {
       pdf.save(
         `${type}-report-${from}-to-${to}.pdf`
       )
-    } catch {
+    } catch (
+      err
+    ) {
       setError(
-        'PDF export failed. Please try again.'
+        err instanceof
+          Error
+          ? err.message
+          : 'PDF export failed. Please try again.'
       )
     } finally {
-      setExporting(false)
+      setExporting(
+        false
+      )
     }
   }
 
-  const amountKey =
-    type ===
-      'collected' ||
-    type ===
-      'expenses'
-      ? 'amount'
-      : 'outstanding'
+  function goToPage(
+    nextPage:
+      number
+  ) {
+    if (
+      nextPage <
+        1 ||
+      nextPage >
+        totalPages ||
+      nextPage ===
+        page
+    ) {
+      return
+    }
 
-  const total =
-    rows.reduce(
-      (
-        sum,
-        row
-      ) =>
-        sum +
-        Number(
-          row[
-            amountKey
-          ] ?? 0
-        ),
-
-      0
+    setLoading(
+      true
     )
+
+    setError(
+      null
+    )
+
+    setPage(
+      nextPage
+    )
+  }
 
   return (
     <div className="page-wrap">
@@ -343,7 +586,7 @@ export default function ReportsPage() {
             disabled={
               loading ||
               exporting ||
-              rows.length ===
+              total ===
                 0
             }
             className="action"
@@ -360,7 +603,7 @@ export default function ReportsPage() {
             }
             disabled={
               loading ||
-              rows.length ===
+              total ===
                 0
             }
             className="action secondary"
@@ -389,7 +632,9 @@ export default function ReportsPage() {
             <select
               className="border rounded-lg px-3 py-2"
               aria-label="Report type"
-              value={type}
+              value={
+                type
+              }
               onChange={(
                 event
               ) =>
@@ -402,8 +647,7 @@ export default function ReportsPage() {
               }
             >
               <option value="income-statement">
-                Income
-                Statement
+                Income Statement
               </option>
 
               <option value="due">
@@ -419,8 +663,7 @@ export default function ReportsPage() {
               </option>
 
               <option value="future">
-                Bills Expected
-                in Future
+                Bills Expected in Future
               </option>
 
               <option value="expenses">
@@ -442,7 +685,8 @@ export default function ReportsPage() {
                 event
               ) => {
                 const preset =
-                  event.target
+                  event
+                    .target
                     .value as PeriodPreset
 
                 setPeriod(
@@ -486,8 +730,7 @@ export default function ReportsPage() {
               </option>
 
               <option value="custom">
-                Custom date
-                range
+                Custom date range
               </option>
             </select>
           </label>
@@ -498,13 +741,15 @@ export default function ReportsPage() {
             </label>
 
             <DateField
-disabled={
+              disabled={
                 period !==
                 'custom'
               }
               className="border rounded-lg px-3 py-2"
               aria-label="Report from date"
-              value={from}
+              value={
+                from
+              }
               onChange={(
                 event
               ) =>
@@ -524,13 +769,15 @@ disabled={
             </label>
 
             <DateField
-disabled={
+              disabled={
                 period !==
                 'custom'
               }
               className="border rounded-lg px-3 py-2"
               aria-label="Report to date"
-              value={to}
+              value={
+                to
+              }
               onChange={(
                 event
               ) =>
@@ -562,9 +809,13 @@ disabled={
             <h2>
               Income Statement
               {' · '}
-              {formatDateGb(from)}
+              {formatDateGb(
+                from
+              )}
               {' to '}
-              {formatDateGb(to)}
+              {formatDateGb(
+                to
+              )}
             </h2>
           </div>
 
@@ -629,7 +880,7 @@ disabled={
                       ) => (
                         <tr
                           key={
-                            index
+                            `${page}-${index}`
                           }
                           className={`border-t ${
                             row.kind ===
@@ -661,7 +912,11 @@ disabled={
                             {row.kind ===
                               'expense' && (
                               <span className="block text-xs font-normal text-gray-500">
-                                {formatDateGb(String(row.date))}
+                                {formatDateGb(
+                                  String(
+                                    row.date
+                                  )
+                                )}
                                 {' · '}
                                 {
                                   row.category
@@ -705,20 +960,12 @@ disabled={
           <p className="text-xs text-gray-500 mb-2">
             {loading
               ? 'Loading...'
-              : `${
-                  REPORT_LABELS[
-                    type
-                  ]
-                }: ${
-                  rows.length
-                } record${
-                  rows.length ===
-                  1
-                    ? ''
-                    : 's'
-                } — ${naira(
-                  total
-                )} total`}
+              : total ===
+                  0
+                ? `${REPORT_LABELS[type]}: no records`
+                : `${REPORT_LABELS[type]}: showing ${firstRow}–${lastRow} of ${total} records — ${naira(
+                    totalAmount
+                  )} total`}
           </p>
 
           <div className="bg-white rounded-xl shadow border overflow-hidden overflow-x-auto">
@@ -797,7 +1044,7 @@ disabled={
                     ) => (
                       <tr
                         key={
-                          index
+                          `${page}-${index}`
                         }
                         className="border-t"
                       >
@@ -829,14 +1076,10 @@ disabled={
                           <>
                             <td className="p-3">
                               {row.date
-                                ? new Date(
-                                    row.date as string
-                                  ).toLocaleDateString(
-                                    'en-GB',
-                                    {
-                                      timeZone:
-                                        'Africa/Lagos',
-                                    }
+                                ? formatDateGb(
+                                    String(
+                                      row.date
+                                    )
                                   )
                                 : '—'}
                             </td>
@@ -862,14 +1105,10 @@ disabled={
                           <>
                             <td className="p-3">
                               {row.dueDate
-                                ? new Date(
-                                    row.dueDate as string
-                                  ).toLocaleDateString(
-                                    'en-GB',
-                                    {
-                                      timeZone:
-                                        'Africa/Lagos',
-                                    }
+                                ? formatDateGb(
+                                    String(
+                                      row.dueDate
+                                    )
                                   )
                                 : '—'}
                             </td>
@@ -935,6 +1174,56 @@ disabled={
             </table>
           </div>
         </>
+      )}
+
+      {totalPages >
+        1 && (
+        <div className="flex items-center justify-between gap-3 mt-4">
+          <button
+            type="button"
+            className="action secondary"
+            disabled={
+              loading ||
+              page <=
+                1
+            }
+            onClick={() =>
+              goToPage(
+                page -
+                  1
+              )
+            }
+          >
+            ← Previous
+          </button>
+
+          <span className="text-sm text-gray-500">
+            Page{' '}
+            {page}{' '}
+            of{' '}
+            {
+              totalPages
+            }
+          </span>
+
+          <button
+            type="button"
+            className="action secondary"
+            disabled={
+              loading ||
+              page >=
+                totalPages
+            }
+            onClick={() =>
+              goToPage(
+                page +
+                  1
+              )
+            }
+          >
+            Next →
+          </button>
+        </div>
       )}
     </div>
   )

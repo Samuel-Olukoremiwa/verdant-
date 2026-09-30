@@ -80,6 +80,8 @@ const sqlFiles = [
   'migration_human_readable_ids.sql',
 
   'migration_invoices_directory_pagination.sql',
+
+  'migration_reports_pagination.sql',
 ]
 
 function sql(
