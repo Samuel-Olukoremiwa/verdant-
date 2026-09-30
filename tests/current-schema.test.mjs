@@ -90,6 +90,8 @@ const sqlFiles = [
   'migration_gate_email_outbox_cutover.sql',
 
   'migration_registration_approval_claim.sql',
+
+  'migration_registration_atomic_decline.sql',
 ]
 
 function sql(
@@ -362,6 +364,31 @@ test(
           `Missing ${table}.${column}`
         )
       }
+
+      const declineFunction =
+        await first(
+          db,
+          `
+            SELECT count(*)::int AS n
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE n.nspname =
+              'public'
+
+              AND p.proname =
+                'decline_registration_request'
+          `
+        )
+
+      assert.equal(
+        declineFunction.n,
+        1
+      )
     } finally {
       await db.close()
     }
@@ -878,6 +905,261 @@ test(
 
       await db.exec(
         'RESET ROLE'
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'registration decline respects active approval claims and clears stale claims',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const admin =
+        await first(
+          db,
+          `
+            INSERT INTO public.admins (
+              full_name,
+              role
+            )
+
+            VALUES (
+              'Registration Test Admin',
+              'super_admin'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const registration =
+        await first(
+          db,
+          `
+            INSERT INTO public.registration_requests (
+              surname,
+              first_name,
+              phone,
+              email,
+              house_number,
+              relationship,
+              move_in_date,
+              property_allocation_date
+            )
+
+            VALUES (
+              'Resident',
+              'Concurrency',
+              '08012345678',
+              'concurrency@example.test',
+              '500',
+              'tenant',
+              '2026-09-01',
+              '2026-08-01'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const token =
+        await first(
+          db,
+          `
+            SELECT
+              gen_random_uuid()
+                AS id
+          `
+        )
+
+      const claim =
+        await first(
+          db,
+          `
+            SELECT
+              public.claim_registration_approval(
+                $1,
+                $2,
+                $3
+              ) AS result
+          `,
+          [
+            registration.id,
+            admin.id,
+            token.id,
+          ]
+        )
+
+      assert.equal(
+        claim.result.claimed,
+        true
+      )
+
+      const blockedDecline =
+        await first(
+          db,
+          `
+            SELECT
+              public.decline_registration_request(
+                $1,
+                $2,
+                $3
+              ) AS result
+          `,
+          [
+            registration.id,
+            admin.id,
+            'Testing active approval protection',
+          ]
+        )
+
+      assert.equal(
+        blockedDecline
+          .result
+          .declined,
+        false
+      )
+
+      assert.equal(
+        blockedDecline
+          .result
+          .reason,
+        'approval_in_progress'
+      )
+
+      const stillPending =
+        await first(
+          db,
+          `
+            SELECT
+              status,
+              approval_claim_token
+
+            FROM public.registration_requests
+
+            WHERE id =
+              $1
+          `,
+          [
+            registration.id,
+          ]
+        )
+
+      assert.equal(
+        stillPending.status,
+        'pending'
+      )
+
+      assert.equal(
+        stillPending
+          .approval_claim_token,
+        token.id
+      )
+
+      /*
+       * Simulate a server that died without releasing
+       * the claim.
+       */
+      await db.query(
+        `
+          UPDATE public.registration_requests
+
+          SET approval_claimed_at =
+            now() - interval '16 minutes'
+
+          WHERE id =
+            $1
+        `,
+        [
+          registration.id,
+        ]
+      )
+
+      const declined =
+        await first(
+          db,
+          `
+            SELECT
+              public.decline_registration_request(
+                $1,
+                $2,
+                $3
+              ) AS result
+          `,
+          [
+            registration.id,
+            admin.id,
+            'Applicant details could not be verified.',
+          ]
+        )
+
+      assert.equal(
+        declined
+          .result
+          .declined,
+        true
+      )
+
+      const final =
+        await first(
+          db,
+          `
+            SELECT
+              status,
+              decline_reason,
+              reviewed_by,
+              reviewed_at,
+              approval_claimed_by,
+              approval_claim_token,
+              approval_claimed_at
+
+            FROM public.registration_requests
+
+            WHERE id =
+              $1
+          `,
+          [
+            registration.id,
+          ]
+        )
+
+      assert.equal(
+        final.status,
+        'declined'
+      )
+
+      assert.equal(
+        final.decline_reason,
+        'Applicant details could not be verified.'
+      )
+
+      assert.equal(
+        final.reviewed_by,
+        admin.id
+      )
+
+      assert.ok(
+        final.reviewed_at
+      )
+
+      assert.equal(
+        final.approval_claimed_by,
+        null
+      )
+
+      assert.equal(
+        final.approval_claim_token,
+        null
+      )
+
+      assert.equal(
+        final.approval_claimed_at,
+        null
       )
     } finally {
       await db.close()

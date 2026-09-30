@@ -2,25 +2,50 @@ import {
   NextRequest,
   NextResponse,
 } from 'next/server'
-import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
-import { createServiceClient } from '@/lib/supabase/service'
 
-const schema = z
-  .object({
-    reason: z
-      .string()
-      .trim()
-      .min(
-        3,
-        'Decline reason is required.'
-      )
-      .max(
-        500,
-        'Decline reason must be 500 characters or fewer.'
-      ),
-  })
-  .strict()
+import {
+  z,
+} from 'zod'
+
+import {
+  createClient,
+} from '@/lib/supabase/server'
+
+import {
+  createServiceClient,
+} from '@/lib/supabase/service'
+
+const schema =
+  z
+    .object({
+      reason:
+        z
+          .string()
+          .trim()
+          .min(
+            3,
+            'Decline reason is required.'
+          )
+          .max(
+            500,
+            'Decline reason must be 500 characters or fewer.'
+          ),
+    })
+    .strict()
+
+type DeclineResult = {
+  declined?:
+    boolean
+
+  reason?:
+    string
+
+  status?:
+    string
+
+  claimed_at?:
+    string
+}
 
 export async function POST(
   req: NextRequest,
@@ -32,34 +57,50 @@ export async function POST(
     }>
   }
 ) {
-  const { id } =
+  const {
+    id,
+  } =
     await params
 
   const supabase =
     await createClient()
 
   const {
-    data: { user },
+    data: {
+      user,
+    },
   } =
     await supabase.auth.getUser()
 
-  if (!user) {
+  if (
+    !user
+  ) {
     return NextResponse.json(
       {
-        error: 'Not signed in',
+        error:
+          'Not signed in',
       },
       {
-        status: 401,
+        status:
+          401,
       }
     )
   }
 
   const {
-    data: admin,
+    data:
+      admin,
+
+    error:
+      adminError,
   } =
     await supabase
-      .from('admins')
-      .select('id, role')
+      .from(
+        'admins'
+      )
+      .select(
+        'id, role'
+      )
       .eq(
         'auth_user_id',
         user.id
@@ -67,18 +108,23 @@ export async function POST(
       .single()
 
   if (
+    adminError ||
     !admin ||
     ![
       'admin',
       'super_admin',
-    ].includes(admin.role)
+    ].includes(
+      admin.role
+    )
   ) {
     return NextResponse.json(
       {
-        error: 'Not authorized',
+        error:
+          'Not authorized',
       },
       {
-        status: 403,
+        status:
+          403,
       }
     )
   }
@@ -87,19 +133,27 @@ export async function POST(
     schema.safeParse(
       await req
         .json()
-        .catch(() => null)
+        .catch(
+          () =>
+            null
+        )
     )
 
-  if (!parsed.success) {
+  if (
+    !parsed.success
+  ) {
     return NextResponse.json(
       {
         error:
-          parsed.error.issues[0]
+          parsed
+            .error
+            .issues[0]
             ?.message ??
           'Decline reason is required.',
       },
       {
-        status: 400,
+        status:
+          400,
       }
     )
   }
@@ -107,59 +161,151 @@ export async function POST(
   const service =
     createServiceClient()
 
+  /*
+   * Decline is performed in PostgreSQL so checking:
+   *
+   * - current registration status
+   * - current approval claim
+   * - claim expiry
+   * - status transition
+   *
+   * all happen while the same row is locked.
+   */
   const {
-    data: updated,
-    error,
+    data:
+      resultData,
+
+    error:
+      declineError,
   } =
-    await service
-      .from(
-        'registration_requests'
-      )
-      .update({
-        status: 'declined',
+    await service.rpc(
+      'decline_registration_request',
+      {
+        p_registration:
+          id,
 
-        decline_reason:
-          parsed.data.reason,
-
-        reviewed_by:
+        p_admin:
           admin.id,
 
-        reviewed_at:
-          new Date()
-            .toISOString(),
-      })
-      .eq('id', id)
-      .eq(
-        'status',
-        'pending'
-      )
-      .select('id')
-      .maybeSingle()
-
-  if (error) {
-    return NextResponse.json(
-      {
-        error: error.message,
-      },
-      {
-        status: 500,
+        p_reason:
+          parsed.data.reason,
       }
     )
-  }
 
-  if (!updated) {
+  if (
+    declineError
+  ) {
+    const message =
+      declineError.message ??
+      ''
+
+    if (
+      message.includes(
+        'decline_registration_request'
+      ) ||
+      message.includes(
+        'schema cache'
+      )
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'The registration decline migration has not been applied yet.',
+        },
+        {
+          status:
+            503,
+        }
+      )
+    }
+
     return NextResponse.json(
       {
         error:
-          'This registration has already been reviewed or no longer exists.',
+          message ||
+          'Could not decline registration.',
       },
       {
-        status: 409,
+        status:
+          500,
       }
     )
   }
 
-  return NextResponse.json({
-    ok: true,
-  })
+  const result =
+    (
+      resultData ??
+      null
+    ) as
+      | DeclineResult
+      | null
+
+  if (
+    result?.declined ===
+    true
+  ) {
+    return NextResponse.json({
+      ok:
+        true,
+    })
+  }
+
+  if (
+    result?.reason ===
+    'not_found'
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'Registration request not found.',
+      },
+      {
+        status:
+          404,
+      }
+    )
+  }
+
+  if (
+    result?.reason ===
+    'approval_in_progress'
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'Another administrator is currently approving this registration. Wait for the approval to finish, then refresh the registration list.',
+      },
+      {
+        status:
+          409,
+      }
+    )
+  }
+
+  if (
+    result?.reason ===
+    'already_reviewed'
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'This registration has already been reviewed. Refresh the registration list.',
+      },
+      {
+        status:
+          409,
+      }
+    )
+  }
+
+  return NextResponse.json(
+    {
+      error:
+        'This registration could not be declined.',
+    },
+    {
+      status:
+        409,
+    }
+  )
 }
