@@ -106,6 +106,9 @@ const sqlFiles = [
   'migrations/20260930194502_payment_transactions_foundation_reconciliation.sql',
 
   'migrations/20260930200132_registration_approval_claimed_by_index.sql',
+
+  'migrations/20260930203855_restrict_single_house_invoice_helper.sql',
+
 ]
 
 function sql(
@@ -3709,6 +3712,80 @@ test(
       assert.match(
         index.indexdef,
         /\(approval_claimed_by\)/
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'legacy single-house invoice helper is restricted to service role',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const privileges =
+        await first(
+          db,
+          `
+            SELECT
+              has_function_privilege(
+                'anon',
+                p.oid,
+                'EXECUTE'
+              ) AS anon_execute,
+
+              has_function_privilege(
+                'authenticated',
+                p.oid,
+                'EXECUTE'
+              ) AS authenticated_execute,
+
+              has_function_privilege(
+                'service_role',
+                p.oid,
+                'EXECUTE'
+              ) AS service_execute
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'generate_single_house_invoice'
+
+              AND pg_get_function_identity_arguments(
+                p.oid
+              ) =
+                'p_house uuid, p_due_type uuid, p_period_start date, p_period_end date, p_due_date date'
+          `
+        )
+
+      assert.ok(
+        privileges
+      )
+
+      assert.equal(
+        privileges.anon_execute,
+        false
+      )
+
+      assert.equal(
+        privileges.authenticated_execute,
+        false
+      )
+
+      assert.equal(
+        privileges.service_execute,
+        true
       )
     } finally {
       await db.close()
