@@ -69,6 +69,10 @@ const sqlFiles = [
 
   'migration_production_alignment.sql',
 
+  'migration_production_foundation_indexes_and_function_hardening.sql',
+
+  'migration_consolidate_rls_policies.sql',
+
   'migration_human_readable_ids.sql',
 ]
 
@@ -726,28 +730,57 @@ test(
       await createDatabase()
 
     try {
-      const policy =
-        await first(
-          db,
-          `
-            SELECT count(*)::int AS n
+      const policies =
+        await db.query(`
+          SELECT
+            policyname,
+            cmd
 
-            FROM pg_policies
+          FROM pg_policies
 
-            WHERE schemaname =
-              'public'
+          WHERE schemaname =
+            'public'
 
-              AND tablename =
-                'registration_requests'
+            AND tablename =
+              'registration_requests'
 
-              AND policyname =
-                'admins manage registration requests'
-          `
+          ORDER BY
+            policyname
+        `)
+
+      const names =
+        new Set(
+          policies.rows.map(
+            (
+              row
+            ) =>
+              row.policyname
+          )
         )
 
+      assert.ok(
+        names.has(
+          'registration requests admin select'
+        )
+      )
+
+      assert.ok(
+        names.has(
+          'registration requests admin update'
+        )
+      )
+
+      assert.ok(
+        names.has(
+          'registration requests admin delete'
+        )
+      )
+
       assert.equal(
-        policy.n,
-        1
+        names.has(
+          'anyone can submit a registration request'
+        ),
+        false
       )
 
       await db.exec(
@@ -771,6 +804,39 @@ test(
             'Resident',
             '08012345678',
             'public@example.test',
+            '1',
+            '2026-09-01',
+            '2026-08-01'
+          )
+        `),
+        /permission denied/
+      )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      await db.exec(
+        'SET ROLE authenticated'
+      )
+
+      await assert.rejects(
+        db.query(`
+          INSERT INTO public.registration_requests (
+            surname,
+            first_name,
+            phone,
+            email,
+            house_number,
+            move_in_date,
+            property_allocation_date
+          )
+
+          VALUES (
+            'Example',
+            'Resident',
+            '08012345678',
+            'signedin@example.test',
             '1',
             '2026-09-01',
             '2026-08-01'
