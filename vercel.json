@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/notifications",
-      "schedule": "*/10 * * * *"
+      "schedule": "30 8 * * *"
     },
     {
       "path": "/api/cron/generate-fixed-charges",
