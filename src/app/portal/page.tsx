@@ -157,12 +157,15 @@ export default async function Portal() {
       : Promise.resolve({ data: [], error: null }),
 
     canManageHousehold
-      ? supabase
-          .from('due_types')
-          .select('id, name, amount')
-          .eq('billing_scope', 'house')
-          .in('name', ['Service Charge', 'CDA Levy'])
-      : Promise.resolve({ data: [], error: null }),
+  ? supabase
+      .from('due_types')
+      .select('id, name, amount')
+      .eq('billing_scope', 'house')
+      .eq('frequency', 'monthly')
+      .eq('active', true)
+      .eq('allow_advance_payment', true)
+      .order('name', { ascending: true })
+  : Promise.resolve({ data: [], error: null }),
   ])
 
   const personalInvoices = (personalResult.data ?? []) as unknown as Invoice[]

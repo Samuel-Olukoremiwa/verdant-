@@ -98,6 +98,8 @@ const sqlFiles = [
   'migration_payment_transactions_resident_access.sql',
 
   'migration_collected_report_transaction_ids.sql',
+
+  'migrations/20260930190015_due_type_capabilities.sql',
 ]
 
 function sql(
@@ -341,6 +343,21 @@ test(
         ],
 
         [
+          'due_types',
+          'active',
+        ],
+
+        [
+          'due_types',
+          'auto_generate',
+        ],
+
+        [
+          'due_types',
+          'allow_advance_payment',
+        ],
+
+        [
           'registration_requests',
           'consent_version',
         ],
@@ -466,6 +483,10 @@ test(
         'hybrid_invoice_period_dates',
 
         'due_types_billing_scope_check',
+
+        'due_types_auto_generate_capability_check',
+
+        'due_types_advance_payment_capability_check',
 
         'payments_reference_invoice_unique',
 
@@ -2569,6 +2590,543 @@ test(
 
       await db.exec(
         'RESET ROLE'
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'due type capabilities replace hard-coded recurring charge names',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const fixedCharges =
+        await db.query(`
+          SELECT
+            name,
+            active,
+            auto_generate,
+            allow_advance_payment
+
+          FROM public.due_types
+
+          WHERE name IN (
+            'Service Charge',
+            'CDA Levy'
+          )
+
+          ORDER BY name
+        `)
+
+      const byName =
+        new Map(
+          fixedCharges.rows.map(
+            (
+              row
+            ) => [
+              row.name,
+              row,
+            ]
+          )
+        )
+
+      for (
+        const name
+        of [
+          'Service Charge',
+          'CDA Levy',
+        ]
+      ) {
+        const row =
+          byName.get(
+            name
+          )
+
+        assert.ok(
+          row,
+          `Missing ${name}`
+        )
+
+        assert.equal(
+          row.active,
+          true
+        )
+
+        assert.equal(
+          row.auto_generate,
+          true
+        )
+
+        assert.equal(
+          row.allow_advance_payment,
+          true
+        )
+      }
+
+      /*
+       * A normal monthly household charge must not
+       * automatically become an auto-generated or
+       * advance-payable charge.
+       */
+      const ordinaryCharge =
+        await first(
+          db,
+          `
+            INSERT INTO public.due_types (
+              name,
+              amount,
+              frequency,
+              billing_scope
+            )
+
+            VALUES (
+              'Capability Disabled Monthly Charge',
+              7500,
+              'monthly',
+              'house'
+            )
+
+            RETURNING
+              id,
+              active,
+              auto_generate,
+              allow_advance_payment
+          `
+        )
+
+      assert.equal(
+        ordinaryCharge.active,
+        true
+      )
+
+      assert.equal(
+        ordinaryCharge.auto_generate,
+        false
+      )
+
+      assert.equal(
+        ordinaryCharge.allow_advance_payment,
+        false
+      )
+
+      /*
+       * Automatic generation is currently supported
+       * only for monthly household charges.
+       */
+      await assert.rejects(
+        db.query(`
+          INSERT INTO public.due_types (
+            name,
+            amount,
+            frequency,
+            billing_scope,
+            auto_generate
+          )
+
+          VALUES (
+            'Invalid Resident Auto Charge',
+            5000,
+            'monthly',
+            'resident',
+            true
+          )
+        `),
+        /due_types_auto_generate_capability_check/
+      )
+
+      /*
+       * Advance payment is currently supported
+       * only for monthly household charges.
+       */
+      await assert.rejects(
+        db.query(`
+          INSERT INTO public.due_types (
+            name,
+            amount,
+            frequency,
+            billing_scope,
+            allow_advance_payment
+          )
+
+          VALUES (
+            'Invalid Annual Advance Charge',
+            5000,
+            'yearly',
+            'house',
+            true
+          )
+        `),
+        /due_types_advance_payment_capability_check/
+      )
+
+      const userId =
+        '44444444-4444-4444-8444-444444444444'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES (
+            $1::uuid,
+            'capability-resident@example.test'
+          )
+        `,
+        [
+          userId,
+        ]
+      )
+
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Capability Test Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const house =
+        await first(
+          db,
+          `
+            INSERT INTO public.houses (
+              address,
+              street_id,
+              house_number
+            )
+
+            VALUES (
+              'House 950',
+              $1::uuid,
+              '950'
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      await first(
+        db,
+        `
+          INSERT INTO public.residents (
+            auth_user_id,
+            house_id,
+            full_name,
+            phone,
+            email,
+            relationship,
+            move_in_date,
+            property_allocation_date
+          )
+
+          VALUES (
+            $1::uuid,
+            $2::uuid,
+            'Capability Test Resident',
+            '08044444444',
+            'capability-resident@example.test',
+            'owner',
+            '2026-09-01',
+            '2026-08-01'
+          )
+
+          RETURNING id
+        `,
+        [
+          userId,
+          house.id,
+        ]
+      )
+
+      const dueType =
+        await first(
+          db,
+          `
+            SELECT
+              id,
+              amount,
+              active,
+              auto_generate,
+              allow_advance_payment
+
+            FROM public.due_types
+
+            WHERE name =
+              'Service Charge'
+          `
+        )
+
+      assert.ok(
+        dueType
+      )
+
+      assert.equal(
+        dueType.active,
+        true
+      )
+
+      assert.equal(
+        dueType.auto_generate,
+        true
+      )
+
+      assert.equal(
+        dueType.allow_advance_payment,
+        true
+      )
+
+      /*
+       * Rename Service Charge.
+       *
+       * The billing behaviour must continue to work because
+       * it now depends on capabilities, not the literal name.
+       */
+      await db.query(
+        `
+          UPDATE public.due_types
+
+          SET name =
+            'Estate Operations Charge'
+
+          WHERE id =
+            $1::uuid
+        `,
+        [
+          dueType.id,
+        ]
+      )
+
+      const renamed =
+        await first(
+          db,
+          `
+            SELECT
+              name,
+              active,
+              auto_generate,
+              allow_advance_payment
+
+            FROM public.due_types
+
+            WHERE id =
+              $1::uuid
+          `,
+          [
+            dueType.id,
+          ]
+        )
+
+      assert.equal(
+        renamed.name,
+        'Estate Operations Charge'
+      )
+
+      assert.equal(
+        renamed.active,
+        true
+      )
+
+      assert.equal(
+        renamed.auto_generate,
+        true
+      )
+
+      assert.equal(
+        renamed.allow_advance_payment,
+        true
+      )
+
+      const month =
+        await first(
+          db,
+          `
+            SELECT
+              to_char(
+                date_trunc(
+                  'month',
+                  now()
+                    AT TIME ZONE
+                      'Africa/Lagos'
+                ),
+                'YYYY-MM'
+              )::text AS value
+          `
+        )
+
+      /*
+       * PGlite needs the parameters inside
+       * jsonb_build_object() explicitly typed.
+       *
+       * This also makes the test closer to the real
+       * prepare_estate_payment() function signature.
+       */
+      const quote =
+        await first(
+          db,
+          `
+            SELECT
+              public.prepare_estate_payment(
+                $1::uuid,
+
+                jsonb_build_array(
+                  jsonb_build_object(
+                    'due_type_id',
+                      $2::uuid::text,
+
+                    'month',
+                      $3::text
+                  )
+                ),
+
+                'CAPABILITY-QUOTE-REFERENCE-001'::text,
+
+                NULL::bigint,
+
+                true
+              ) AS result
+          `,
+          [
+            userId,
+            dueType.id,
+            month.value,
+          ]
+        )
+
+      assert.ok(
+        quote?.result
+      )
+
+      assert.equal(
+        quote
+          .result
+          .lines
+          .length,
+        1
+      )
+
+      assert.equal(
+        quote
+          .result
+          .lines[0]
+          .charge,
+        'Estate Operations Charge'
+      )
+
+      assert.equal(
+        Number(
+          quote
+            .result
+            .total_kobo
+        ),
+        Math.round(
+          Number(
+            dueType.amount
+          ) *
+          100
+        )
+      )
+
+      /*
+       * Automatic invoice generation must still work
+       * after the charge has been renamed.
+       */
+      const generation =
+        await first(
+          db,
+          `
+            SELECT
+              public.generate_estate_fixed_charges()
+                AS result
+          `
+        )
+
+      assert.ok(
+        generation?.result
+      )
+
+      assert.ok(
+        Number(
+          generation
+            .result
+            .created
+        ) >=
+          1
+      )
+
+      const generated =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int AS n
+
+            FROM public.invoices
+
+            WHERE
+              house_id =
+                $1::uuid
+
+              AND due_type_id =
+                $2::uuid
+          `,
+          [
+            house.id,
+            dueType.id,
+          ]
+        )
+
+      assert.equal(
+        generated.n,
+        1
+      )
+
+      /*
+       * The ordinary monthly charge must not have an
+       * automatically generated invoice because
+       * auto_generate remains false.
+       */
+      const ordinaryGenerated =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int AS n
+
+            FROM public.invoices
+
+            WHERE
+              house_id =
+                $1::uuid
+
+              AND due_type_id =
+                $2::uuid
+          `,
+          [
+            house.id,
+            ordinaryCharge.id,
+          ]
+        )
+
+      assert.equal(
+        ordinaryGenerated.n,
+        0
       )
     } finally {
       await db.close()
