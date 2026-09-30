@@ -99,11 +99,13 @@ const sqlFiles = [
 
   'migration_collected_report_transaction_ids.sql',
 
-   'migrations/20260930190015_due_type_capabilities.sql',
+  'migrations/20260930190015_due_type_capabilities.sql',
 
-   'migrations/20260930192416_due_type_reporting_capabilities.sql',
+  'migrations/20260930192416_due_type_reporting_capabilities.sql',
 
-   'migrations/20260930194502_payment_transactions_foundation_reconciliation.sql',
+  'migrations/20260930194502_payment_transactions_foundation_reconciliation.sql',
+
+  'migrations/20260930200132_registration_approval_claimed_by_index.sql',
 ]
 
 function sql(
@@ -3630,6 +3632,83 @@ test(
 
       await db.exec(
         'RESET ROLE'
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'registration approval claimant foreign key has a covering index',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const foreignKey =
+        await first(
+          db,
+          `
+            SELECT
+              pg_get_constraintdef(
+                c.oid
+              ) AS definition
+
+            FROM pg_constraint c
+
+            WHERE
+              c.conrelid =
+                'public.registration_requests'::regclass
+
+              AND c.conname =
+                'registration_requests_approval_claimed_by_fkey'
+          `
+        )
+
+      assert.ok(
+        foreignKey
+      )
+
+      assert.match(
+        foreignKey.definition,
+        /FOREIGN KEY \(approval_claimed_by\) REFERENCES admins\(id\) ON DELETE SET NULL/
+      )
+
+      const index =
+        await first(
+          db,
+          `
+            SELECT
+              indexname,
+              indexdef
+
+            FROM pg_indexes
+
+            WHERE
+              schemaname =
+                'public'
+
+              AND tablename =
+                'registration_requests'
+
+              AND indexname =
+                'idx_registration_requests_approval_claimed_by'
+          `
+        )
+
+      assert.ok(
+        index
+      )
+
+      assert.equal(
+        index.indexname,
+        'idx_registration_requests_approval_claimed_by'
+      )
+
+      assert.match(
+        index.indexdef,
+        /\(approval_claimed_by\)/
       )
     } finally {
       await db.close()
