@@ -1,13 +1,5 @@
 'use client'
 
-import { DateField } from '@/components/date-field'
-import {
-  InvoiceGenerationPreview,
-} from '@/components/invoice-generation-preview'
-import {
-  InvoicePeriodControls,
-} from '@/components/invoice-period-controls'
-
 import Link from 'next/link'
 import {
   useEffect,
@@ -16,16 +8,19 @@ import {
 } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { createClient } from '@/lib/supabase/client'
+import {
+  InvoiceHouseholdControls,
+} from '@/components/invoice-household-controls'
+import {
+  InvoiceResidentControls,
+} from '@/components/invoice-resident-controls'
 
 import {
   canonicalFrequency,
-  displayDate,
   freshForm,
   makeHouseRange,
   makeSingleHousePeriod,
   modeFromQuery,
-  naira,
   type BillingMode,
   type DueType,
   type House,
@@ -34,6 +29,10 @@ import {
   type ResidentPreview,
   type Summary,
 } from '@/lib/invoice-generation'
+
+import {
+  createClient,
+} from '@/lib/supabase/client'
 
 export default function GenerateInvoicesPage() {
   const router =
@@ -130,22 +129,6 @@ export default function GenerateInvoicesPage() {
       Resident[]
     >(
       []
-    )
-
-  const [
-    houseSearch,
-    setHouseSearch,
-  ] =
-    useState(
-      ''
-    )
-
-  const [
-    streetFilter,
-    setStreetFilter,
-  ] =
-    useState(
-      'all'
     )
 
   const [
@@ -421,149 +404,6 @@ export default function GenerateInvoicesPage() {
         form.resident_id
     )
 
-  const streets =
-    useMemo(
-      () => {
-        const byId =
-          new Map<
-            string,
-            string
-          >()
-
-        for (
-          const house
-          of houses
-        ) {
-          if (
-            house.street_id &&
-            house.streets
-              ?.name
-          ) {
-            byId.set(
-              house.street_id,
-              house.streets.name
-            )
-          }
-        }
-
-        return Array.from(
-          byId.entries()
-        )
-          .map(
-            ([
-              id,
-              name,
-            ]) => ({
-              id,
-              name,
-            })
-          )
-          .sort(
-            (
-              a,
-              b
-            ) =>
-              a.name.localeCompare(
-                b.name
-              )
-          )
-      },
-      [
-        houses,
-      ]
-    )
-
-  const housesForStreet =
-    useMemo(
-      () => {
-        if (
-          streetFilter ===
-          'all'
-        ) {
-          return houses
-        }
-
-        return houses.filter(
-          (
-            house
-          ) =>
-            house.street_id ===
-            streetFilter
-        )
-      },
-      [
-        houses,
-        streetFilter,
-      ]
-    )
-
-  const filteredHouses =
-    useMemo(
-      () => {
-        const query =
-          houseSearch
-            .trim()
-            .toLowerCase()
-
-        if (
-          !query
-        ) {
-          return housesForStreet
-        }
-
-        return housesForStreet.filter(
-          (
-            house
-          ) => {
-            const residentNames =
-              (
-                house.residents ??
-                []
-              )
-                .filter(
-                  (
-                    resident
-                  ) =>
-                    resident.is_active
-                )
-                .map(
-                  (
-                    resident
-                  ) =>
-                    resident.full_name
-                )
-                .join(
-                  ' '
-                )
-                .toLowerCase()
-
-            return (
-              house.address
-                .toLowerCase()
-                .includes(
-                  query
-                ) ||
-              (
-                house.house_type ??
-                ''
-              )
-                .toLowerCase()
-                .includes(
-                  query
-                ) ||
-              residentNames.includes(
-                query
-              )
-            )
-          }
-        )
-      },
-      [
-        houseSearch,
-        housesForStreet,
-      ]
-    )
-
   const houseFrequency =
     selectedDueType
       ?.billing_scope ===
@@ -600,62 +440,6 @@ export default function GenerateInvoicesPage() {
         )
       : null
 
-  const householdBillingContact =
-    useMemo(
-      () => {
-        if (
-          !selectedHouse
-        ) {
-          return null
-        }
-
-        const householdMembers =
-          selectedHouse
-            .residents ??
-          []
-
-        if (
-          selectedHouse
-            .billing_responsible_resident_id
-        ) {
-          const delegated =
-            householdMembers.find(
-              (
-                resident
-              ) =>
-                resident.id ===
-                selectedHouse
-                  .billing_responsible_resident_id
-            )
-
-          if (
-            delegated
-          ) {
-            return delegated
-              .full_name
-          }
-        }
-
-        const owner =
-          householdMembers.find(
-            (
-              resident
-            ) =>
-              resident.is_active &&
-              resident.relationship ===
-                'owner'
-          )
-
-        return (
-          owner?.full_name ??
-          null
-        )
-      },
-      [
-        selectedHouse,
-      ]
-    )
-
   function resetResultState() {
     setResidentPreview(
       null
@@ -684,14 +468,6 @@ export default function GenerateInvoicesPage() {
       nextMode
     )
 
-    setHouseSearch(
-      ''
-    )
-
-    setStreetFilter(
-      'all'
-    )
-
     setSelectedHouseId(
       ''
     )
@@ -718,46 +494,6 @@ export default function GenerateInvoicesPage() {
     )
 
     resetResultState()
-  }
-
-  function selectStreet(
-    value:
-      string
-  ) {
-    setStreetFilter(
-      value
-    )
-
-    setHouseSearch(
-      ''
-    )
-
-    resetResultState()
-
-    if (
-      selectedHouseId &&
-      value !==
-        'all'
-    ) {
-      const selected =
-        houses.find(
-          (
-            house
-          ) =>
-            house.id ===
-            selectedHouseId
-        )
-
-      if (
-        selected
-          ?.street_id !==
-        value
-      ) {
-        setSelectedHouseId(
-          ''
-        )
-      }
-    }
   }
 
   function selectResident(
@@ -1297,14 +1033,6 @@ export default function GenerateInvoicesPage() {
       ''
     )
 
-    setHouseSearch(
-      ''
-    )
-
-    setStreetFilter(
-      'all'
-    )
-
     setForm(
       freshForm()
     )
@@ -1423,987 +1151,106 @@ export default function GenerateInvoicesPage() {
           </button>
 
           <div className="form-card space-y-5">
-            {mode ===
-              'all-households' && (
-              <div className="rounded-lg border bg-gray-50 p-4 text-sm">
-                <strong>
-                  Bill all households
-                </strong>
-
-                <p className="mt-1 text-gray-600">
-                  One invoice will be created per
-                  house for the selected period.
-                  Residents sharing a house will not
-                  receive duplicate household invoices.
-                </p>
-              </div>
-            )}
-
-            {mode ===
-              'household' && (
-              <div className="space-y-4">
-                <div className="rounded-lg border bg-gray-50 p-4 text-sm">
-                  <strong>
-                    Bill a household
-                  </strong>
-
-                  <p className="mt-1 text-gray-600">
-                    Filter the &apos;street&apos; first,
-                    then select one property. The invoice
-                    belongs to the house, not to every
-                    resident living there.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Street
-                    </label>
-
-                    <select
-                      className="w-full border rounded-lg px-3 py-2"
-                      value={
-                        streetFilter
-                      }
-                      onChange={(
-                        event
-                      ) =>
-                        selectStreet(
-                          event
-                            .target
-                            .value
-                        )
-                      }
-                    >
-                      <option value="all">
-                        All streets
-                      </option>
-
-                      {streets.map(
-                        (
-                          street
-                        ) => (
-                          <option
-                            key={
-                              street.id
-                            }
-                            value={
-                              street.id
-                            }
-                          >
-                            {
-                              street.name
-                            }
-                          </option>
-                        )
-                      )}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Property
-                    </label>
-
-                    <select
-                      className="w-full border rounded-lg px-3 py-2"
-                      value={
-                        selectedHouseId
-                      }
-                      onChange={(
-                        event
-                      ) => {
-                        setSelectedHouseId(
-                          event
-                            .target
-                            .value
-                        )
-
-                        resetResultState()
-                      }}
-                    >
-                      <option value="">
-                        Select a property
-                      </option>
-
-                      {housesForStreet.map(
-                        (
-                          house
-                        ) => (
-                          <option
-                            key={
-                              house.id
-                            }
-                            value={
-                              house.id
-                            }
-                          >
-                            {
-                              house.address
-                            }
-                          </option>
-                        )
-                      )}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Search resident or property
-                  </label>
-
-                  <input
-                    type="search"
-                    value={
-                      houseSearch
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setHouseSearch(
-                        event
-                          .target
-                          .value
-                      )
-                    }
-                    placeholder="Optional: search by resident name, house, or house type..."
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-
-                  <p className="text-xs text-gray-500 mt-1">
-                    Use this when you know a resident
-                    name but not the exact property.
-                  </p>
-                </div>
-
-                <div className="border rounded-xl overflow-hidden max-h-72 overflow-y-auto">
-                  {filteredHouses.length ? (
-                    filteredHouses.map(
-                      (
-                        house
-                      ) => {
-                        const activeResidents =
-                          (
-                            house.residents ??
-                            []
-                          ).filter(
-                            (
-                              resident
-                            ) =>
-                              resident.is_active
-                          )
-
-                        return (
-                          <button
-                            key={
-                              house.id
-                            }
-                            type="button"
-                            aria-pressed={
-                              selectedHouseId ===
-                              house.id
-                            }
-                            onClick={() => {
-                              setSelectedHouseId(
-                                house.id
-                              )
-
-                              resetResultState()
-                            }}
-                            className={`w-full text-left p-4 border-b last:border-b-0 ${
-                              selectedHouseId ===
-                              house.id
-                                ? 'bg-green-50'
-                                : 'bg-white'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <strong>
-                                  {
-                                    house.address
-                                  }
-                                </strong>
-
-                                <p className="text-xs text-gray-500 mt-1">
-                                  {house.house_type ??
-                                    'House type not set'}
-                                </p>
-
-                                {activeResidents.length >
-                                  0 && (
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    {activeResidents
-                                      .map(
-                                        (
-                                          resident
-                                        ) =>
-                                          resident.full_name
-                                      )
-                                      .join(
-                                        ', '
-                                      )}
-                                  </p>
-                                )}
-                              </div>
-
-                              {selectedHouseId ===
-                                house.id && (
-                                <span className="pill good">
-                                  Selected
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        )
-                      }
-                    )
-                  ) : (
-                    <p className="p-5 text-sm text-gray-500">
-                      No households match the selected
-                      street and search.
-                    </p>
-                  )}
-                </div>
-
-                {selectedHouse && (
-                  <div className="rounded-lg border p-4 text-sm bg-green-50">
-                    <span className="text-gray-500">
-                      Selected household
-                    </span>
-
-                    <strong className="block mt-1">
-                      ✓{' '}
-                      {
-                        selectedHouse.address
-                      }
-                    </strong>
-
-                    <p className="text-xs text-gray-500 mt-1">
-                      {selectedHouse.house_type ??
-                        'House type not set'}
-                    </p>
-
-                    <p className="text-xs text-gray-500 mt-2">
-                      <strong>
-                        Billing contact:
-                      </strong>{' '}
-                      {householdBillingContact ??
-                        'No active Home Owner or designated billing contact found'}
-                    </p>
-
-                    <p className="text-xs text-gray-500 mt-1">
-                      The invoice remains attached to this
-                      house. The billing contact is the person
-                      who receives and manages the household bill.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
             {mode !==
               'resident' && (
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Household Due Type *
-                  </label>
+              <InvoiceHouseholdControls
+                mode={
+                  mode
+                }
+                houses={
+                  houses
+                }
+                houseDueTypes={
+                  houseDueTypes
+                }
+                selectedHouseId={
+                  selectedHouseId
+                }
+                selectedHouse={
+                  selectedHouse
+                }
+                selectedDueType={
+                  selectedDueType
+                }
+                frequency={
+                  houseFrequency
+                }
+                form={
+                  form
+                }
+                allHouseholdPeriod={
+                  allHouseholdPeriod
+                }
+                selectedHouseRange={
+                  selectedHouseRange
+                }
+                housePreview={
+                  housePreview
+                }
+                loading={
+                  loading
+                }
+                onSelectHouse={(
+                  houseId
+                ) => {
+                  setSelectedHouseId(
+                    houseId
+                  )
 
-                  <select
-                    required
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={
-                      form.due_type_id
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      changeForm({
-                        due_type_id:
-                          event
-                            .target
-                            .value,
-
-                        due_date:
-                          '',
-                      })
-                    }
-                  >
-                    <option value="">
-                      Select a household due
-                    </option>
-
-                    {houseDueTypes.map(
-                      (
-                        dueType
-                      ) => (
-                        <option
-                          key={
-                            dueType.id
-                          }
-                          value={
-                            dueType.id
-                          }
-                        >
-                          {
-                            dueType.name
-                          }{' '}
-                          —{' '}
-                          {naira(
-                            Number(
-                              dueType.amount
-                            )
-                          )}{' '}
-                          —{' '}
-                          {
-                            dueType.frequency
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
-                </div>
-
-                {selectedDueType && (
-                  <div className="rounded-lg border p-4 text-sm">
-                    <p>
-                      <strong>
-                        Amount:
-                      </strong>{' '}
-                      {naira(
-                        Number(
-                          selectedDueType.amount
-                        )
-                      )}
-                    </p>
-
-                    <p className="mt-1 capitalize">
-                      <strong>
-                        Frequency:
-                      </strong>{' '}
-                      {
-                        selectedDueType.frequency
-                      }
-                    </p>
-                  </div>
-                )}
-
-                {selectedDueType &&
-                  mode ===
-                    'all-households' && (
-                    <InvoicePeriodControls
-                      mode="all-households"
-                      frequency={
-                        houseFrequency
-                      }
-                      form={
-                        form
-                      }
-                      onChange={
-                        changeForm
-                      }
-                      singlePeriod={
-                        allHouseholdPeriod
-                      }
-                      range={
-                        null
-                      }
-                    />
-                  )}
-
-                {selectedDueType &&
-                  mode ===
-                    'household' && (
-                    <InvoicePeriodControls
-                      mode="household"
-                      frequency={
-                        houseFrequency
-                      }
-                      form={
-                        form
-                      }
-                      onChange={
-                        changeForm
-                      }
-                      singlePeriod={
-                        null
-                      }
-                      range={
-                        selectedHouseRange
-                      }
-                    />
-                  )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Due Date *
-                  </label>
-
-                  <DateField
-                    required
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={
-                      form.due_date
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      changeForm({
-                        due_date:
-                          event
-                            .target
-                            .value,
-                      })
-                    }
-                  />
-
-                  <p className="text-xs text-gray-500 mt-1">
-                    For a multi-period household range,
-                    this same due date is applied to all
-                    newly generated invoices in the range.
-                  </p>
-                </div>
-
-                {mode ===
-                  'all-households' &&
-                  selectedDueType &&
-                  allHouseholdPeriod &&
-                  form.due_date && (
-                    <div className="rounded-xl border p-4">
-                      <span className="eyebrow">
-                        Preview
-                      </span>
-
-                      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 text-sm">
-                        <div>
-                          <dt className="text-gray-500">
-                            Target
-                          </dt>
-
-                          <dd className="font-semibold mt-1">
-                            All{' '}
-                            {
-                              houses.length
-                            }{' '}
-                            households
-                          </dd>
-                        </div>
-
-                        <div>
-                          <dt className="text-gray-500">
-                            Charge
-                          </dt>
-
-                          <dd className="font-semibold mt-1">
-                            {
-                              selectedDueType.name
-                            }
-                          </dd>
-                        </div>
-
-                        <div>
-                          <dt className="text-gray-500">
-                            Period
-                          </dt>
-
-                          <dd className="font-semibold mt-1">
-                            {
-                              allHouseholdPeriod.label
-                            }
-                          </dd>
-                        </div>
-
-                        <div>
-                          <dt className="text-gray-500">
-                            Due date
-                          </dt>
-
-                          <dd className="font-semibold mt-1">
-                            {displayDate(
-                              form.due_date
-                            )}
-                          </dd>
-                        </div>
-
-                        <div>
-                          <dt className="text-gray-500">
-                            Amount per household
-                          </dt>
-
-                          <dd className="font-semibold mt-1">
-                            {naira(
-                              Number(
-                                selectedDueType.amount
-                              )
-                            )}
-                          </dd>
-                        </div>
-
-                        <div>
-                          <dt className="text-gray-500">
-                            Maximum new billing
-                          </dt>
-
-                          <dd className="font-semibold mt-1">
-                            {naira(
-                              Number(
-                                selectedDueType.amount
-                              ) *
-                                houses.length
-                            )}
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
-                  )}
-
-                {mode ===
-                  'all-households' && (
-                  <form
-                    onSubmit={
-                      generateAllHouseholds
-                    }
-                  >
-                    <button
-                      type="submit"
-                      disabled={
-                        loading ||
-                        !allHouseholdPeriod ||
-                        !form.due_date
-                      }
-                      className="action disabled:opacity-50"
-                    >
-                      {loading
-                        ? 'Generating...'
-                        : 'Generate Due for All Households'}
-                    </button>
-                  </form>
-                )}
-
-                {mode ===
-                  'household' && (
-                  <div className="space-y-4">
-                    <button
-                      type="button"
-                      disabled={
-                        loading ||
-                        !selectedHouse ||
-                        !selectedHouseRange ||
-                        !form.due_date
-                      }
-                      onClick={
-                        previewSingleHousehold
-                      }
-                      className="action secondary disabled:opacity-50"
-                    >
-                      {loading
-                        ? 'Preparing...'
-                        : 'Preview Household Invoices'}
-                    </button>
-
-                    {housePreview && (
-                      <InvoiceGenerationPreview
-                        title="Household Invoice Preview"
-                        subtitle={`${housePreview.address} · ${housePreview.due_type_name}`}
-                        billingContact={
-                          housePreview.billing_contact_name
-                        }
-                        periods={
-                          housePreview.periods
-                        }
-                        createCount={
-                          housePreview.create_count
-                        }
-                        duplicateCount={
-                          housePreview.duplicate_count
-                        }
-                        totalToCreate={
-                          housePreview.total_to_create
-                        }
-                        loading={
-                          loading
-                        }
-                        onGenerate={
-                          generateSingleHousehold
-                        }
-                      />
-                    )}
-                  </div>
-                )}
-              </div>
+                  resetResultState()
+                }}
+                onChange={
+                  changeForm
+                }
+                onGenerateAll={
+                  generateAllHouseholds
+                }
+                onPreviewHouse={
+                  previewSingleHousehold
+                }
+                onGenerateHouse={
+                  generateSingleHousehold
+                }
+              />
             )}
 
             {mode ===
               'resident' && (
-              <div className="space-y-5">
-                <div className="rounded-lg border bg-gray-50 p-4 text-sm">
-                  <strong>
-                    Bill a resident
-                  </strong>
-
-                  <p className="mt-1 text-gray-600">
-                    The charge belongs only to the
-                    selected resident. Other people in
-                    the same house will not receive it.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Resident *
-                  </label>
-
-                  <select
-                    required
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={
-                      form.resident_id
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      selectResident(
-                        event
-                          .target
-                          .value
-                      )
-                    }
-                  >
-                    <option value="">
-                      Select a resident
-                    </option>
-
-                    {residents.map(
-                      (
-                        resident
-                      ) => (
-                        <option
-                          key={
-                            resident.id
-                          }
-                          value={
-                            resident.id
-                          }
-                        >
-                          {
-                            resident.full_name
-                          }
-
-                          {resident.houses
-                            ?.address
-                            ? ` — ${resident.houses.address}`
-                            : ''}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </div>
-
-                {selectedResident && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg border p-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">
-                        Property Allocation Date
-                      </span>
-
-                      <strong className="block mt-1">
-                        {displayDate(
-                          selectedResident.property_allocation_date
-                        )}
-                      </strong>
-                    </div>
-
-                    <div>
-                      <span className="text-gray-500">
-                        Move-in Date
-                      </span>
-
-                      <strong className="block mt-1">
-                        {displayDate(
-                          selectedResident.move_in_date
-                        )}
-                      </strong>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Individual Resident Due Type *
-                  </label>
-
-                  <select
-                    required
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={
-                      form.due_type_id
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      changeForm({
-                        due_type_id:
-                          event
-                            .target
-                            .value,
-                      })
-                    }
-                  >
-                    <option value="">
-                      Select an individual due
-                    </option>
-
-                    {residentDueTypes.map(
-                      (
-                        dueType
-                      ) => (
-                        <option
-                          key={
-                            dueType.id
-                          }
-                          value={
-                            dueType.id
-                          }
-                        >
-                          {
-                            dueType.name
-                          }{' '}
-                          —{' '}
-                          {naira(
-                            Number(
-                              dueType.amount
-                            )
-                          )}{' '}
-                          —{' '}
-                          {
-                            dueType.frequency
-                          }
-                        </option>
-                      )
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Billing Start *
-                  </label>
-
-                  <DateField
-                    required
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={
-                      form.billing_start
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      changeForm({
-                        billing_start:
-                          event
-                            .target
-                            .value,
-                      })
-                    }
-                  />
-
-                  {selectedResident && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <button
-                        type="button"
-                        className="action secondary"
-                        style={{
-                          padding:
-                            '.45rem .75rem',
-
-                          minHeight:
-                            36,
-
-                          fontSize:
-                            '.75rem',
-                        }}
-                        disabled={
-                          !selectedResident.property_allocation_date
-                        }
-                        onClick={() =>
-                          changeForm({
-                            billing_start:
-                              selectedResident.property_allocation_date ??
-                              '',
-                          })
-                        }
-                      >
-                        Use allocation date
-                      </button>
-
-                      <button
-                        type="button"
-                        className="action secondary"
-                        style={{
-                          padding:
-                            '.45rem .75rem',
-
-                          minHeight:
-                            36,
-
-                          fontSize:
-                            '.75rem',
-                        }}
-                        disabled={
-                          !selectedResident.move_in_date
-                        }
-                        onClick={() =>
-                          changeForm({
-                            billing_start:
-                              selectedResident.move_in_date ??
-                              '',
-                          })
-                        }
-                      >
-                        Use move-in date
-                      </button>
-                    </div>
-                  )}
-
-                  <p className="text-xs text-gray-500 mt-2">
-                    You can select any valid start date
-                    directly from the calendar.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Billing End *
-                  </label>
-
-                  <DateField
-                    required
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={
-                      form.end_date
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      changeForm({
-                        end_date:
-                          event
-                            .target
-                            .value,
-                      })
-                    }
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Due Date *
-                  </label>
-
-                  <DateField
-                    required
-                    className="w-full border rounded-lg px-3 py-2"
-                    value={
-                      form.due_date
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      changeForm({
-                        due_date:
-                          event
-                            .target
-                            .value,
-                      })
-                    }
-                  />
-
-                  <p className="text-xs text-gray-500 mt-1">
-                    The selected due date is applied to
-                    each new personal invoice created from
-                    this billing range.
-                  </p>
-                </div>
-
-                {selectedDueType && (
-                  <div className="rounded-lg border p-4 text-sm">
-                    <p>
-                      <strong>
-                        Frequency:
-                      </strong>{' '}
-
-                      <span className="capitalize">
-                        {
-                          selectedDueType.frequency
-                        }
-                      </span>
-                    </p>
-
-                    <p className="mt-1">
-                      <strong>
-                        Amount per period:
-                      </strong>{' '}
-
-                      {naira(
-                        Number(
-                          selectedDueType.amount
-                        )
-                      )}
-                    </p>
-
-                    <p className="mt-1 text-gray-500">
-                      Zadant splits the selected range
-                      into monthly, quarterly, yearly,
-                      or one-time invoices according to
-                      the due type. Period labels are
-                      generated automatically.
-                    </p>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={
-                    loading
-                  }
-                  onClick={
-                    previewResidentInvoices
-                  }
-                  className="action secondary disabled:opacity-50"
-                >
-                  {loading
-                    ? 'Preparing...'
-                    : 'Preview Invoices'}
-                </button>
-
-                {residentPreview && (
-                  <InvoiceGenerationPreview
-                    title="Invoice Preview"
-                    subtitle={`${residentPreview.resident_name} · ${residentPreview.due_type_name}`}
-                    periods={
-                      residentPreview.periods
-                    }
-                    createCount={
-                      residentPreview.create_count
-                    }
-                    duplicateCount={
-                      residentPreview.duplicate_count
-                    }
-                    totalToCreate={
-                      residentPreview.total_to_create
-                    }
-                    loading={
-                      loading
-                    }
-                    onGenerate={
-                      generateResidentInvoices
-                    }
-                  />
-                )}
-              </div>
+              <InvoiceResidentControls
+                residents={
+                  residents
+                }
+                residentDueTypes={
+                  residentDueTypes
+                }
+                selectedResident={
+                  selectedResident
+                }
+                selectedDueType={
+                  selectedDueType
+                }
+                form={
+                  form
+                }
+                loading={
+                  loading
+                }
+                preview={
+                  residentPreview
+                }
+                onChange={
+                  changeForm
+                }
+                onSelectResident={
+                  selectResident
+                }
+                onPreview={
+                  previewResidentInvoices
+                }
+                onGenerate={
+                  generateResidentInvoices
+                }
+              />
             )}
 
             {error && (
