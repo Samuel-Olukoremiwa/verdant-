@@ -1,6 +1,9 @@
 'use client'
 
 import { DateField } from '@/components/date-field'
+import {
+  InvoiceGenerationPreview,
+} from '@/components/invoice-generation-preview'
 
 import Link from 'next/link'
 import {
@@ -9,6 +12,7 @@ import {
   useState,
 } from 'react'
 import { useRouter } from 'next/navigation'
+
 import { createClient } from '@/lib/supabase/client'
 
 import {
@@ -32,30 +36,59 @@ import {
 } from '@/lib/invoice-generation'
 
 export default function GenerateInvoicesPage() {
-  const router = useRouter()
+  const router =
+    useRouter()
 
-  const supabase = useMemo(
-    () => createClient(),
-    []
-  )
+  const supabase =
+    useMemo(
+      () =>
+        createClient(),
+      []
+    )
 
-  const [mode, setMode] =
-    useState<BillingMode>(null)
+  const [
+    mode,
+    setMode,
+  ] =
+    useState<BillingMode>(
+      null
+    )
 
-  const [loading, setLoading] =
-    useState(false)
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      false
+    )
 
-  const [error, setError] =
-    useState<string | null>(null)
+  const [
+    error,
+    setError,
+  ] =
+    useState<
+      string | null
+    >(
+      null
+    )
 
-  const [summary, setSummary] =
-    useState<Summary | null>(null)
+  const [
+    summary,
+    setSummary,
+  ] =
+    useState<
+      Summary | null
+    >(
+      null
+    )
 
   const [
     residentPreview,
     setResidentPreview,
   ] =
-    useState<ResidentPreview | null>(
+    useState<
+      ResidentPreview | null
+    >(
       null
     )
 
@@ -63,224 +96,271 @@ export default function GenerateInvoicesPage() {
     housePreview,
     setHousePreview,
   ] =
-    useState<HousePreview | null>(
+    useState<
+      HousePreview | null
+    >(
       null
     )
 
-  const [dueTypes, setDueTypes] =
-    useState<DueType[]>([])
+  const [
+    dueTypes,
+    setDueTypes,
+  ] =
+    useState<
+      DueType[]
+    >(
+      []
+    )
 
-  const [houses, setHouses] =
-    useState<House[]>([])
+  const [
+    houses,
+    setHouses,
+  ] =
+    useState<
+      House[]
+    >(
+      []
+    )
 
-  const [residents, setResidents] =
-    useState<Resident[]>([])
+  const [
+    residents,
+    setResidents,
+  ] =
+    useState<
+      Resident[]
+    >(
+      []
+    )
 
   const [
     houseSearch,
     setHouseSearch,
   ] =
-    useState('')
+    useState(
+      ''
+    )
 
   const [
     streetFilter,
     setStreetFilter,
   ] =
-    useState('all')
+    useState(
+      'all'
+    )
 
   const [
     selectedHouseId,
     setSelectedHouseId,
   ] =
-    useState('')
+    useState(
+      ''
+    )
 
-  const [form, setForm] =
-    useState(freshForm)
+  const [
+    form,
+    setForm,
+  ] =
+    useState(
+      freshForm
+    )
 
-  useEffect(() => {
-    const timer =
-      window.setTimeout(
-        () => {
-          const params =
-            new URLSearchParams(
-              window.location.search
-            )
+  useEffect(
+    () => {
+      const timer =
+        window.setTimeout(
+          () => {
+            const params =
+              new URLSearchParams(
+                window.location
+                  .search
+              )
 
-          const requestedMode =
-            modeFromQuery(
+            const requestedMode =
+              modeFromQuery(
+                params.get(
+                  'mode'
+                )
+              )
+
+            const requestedHouse =
               params.get(
-                'mode'
-              )
-            )
+                'house'
+              ) ??
+              ''
 
-          const requestedHouse =
-            params.get(
-              'house'
-            ) ?? ''
+            const requestedResident =
+              params.get(
+                'resident'
+              ) ??
+              ''
 
-          const requestedResident =
-            params.get(
-              'resident'
-            ) ?? ''
-
-          if (
-            requestedMode
-          ) {
-            setMode(
+            if (
               requestedMode
-            )
-          }
+            ) {
+              setMode(
+                requestedMode
+              )
+            }
 
-          if (
-            requestedHouse
-          ) {
-            setSelectedHouseId(
+            if (
               requestedHouse
-            )
-          }
-
-          if (
-            requestedResident
-          ) {
-            setForm(
-              (
-                current
-              ) => ({
-                ...current,
-
-                resident_id:
-                  requestedResident,
-              })
-            )
-          }
-        },
-        0
-      )
-
-    return () => {
-      window.clearTimeout(
-        timer
-      )
-    }
-  }, [])
-
-  useEffect(() => {
-    let active =
-      true
-
-    async function load() {
-      const [
-        dueResult,
-        houseResult,
-        residentResult,
-      ] =
-        await Promise.all([
-          supabase
-            .from(
-              'due_types'
-            )
-            .select(
-              'id, name, amount, frequency, billing_scope'
-            )
-            .order(
-              'name'
-            ),
-
-          supabase
-            .from(
-              'houses'
-            )
-            .select(`
-              id,
-              address,
-              house_type,
-              street_id,
-              billing_responsible_resident_id,
-              streets (
-                name
-              ),
-              residents:residents!residents_house_id_fkey (
-                id,
-                full_name,
-                relationship,
-                is_active
+            ) {
+              setSelectedHouseId(
+                requestedHouse
               )
-            `)
-            .order(
-              'address'
-            ),
+            }
 
-          supabase
-            .from(
-              'residents'
-            )
-            .select(`
-              id,
-              house_id,
-              full_name,
-              move_in_date,
-              property_allocation_date,
-              houses:houses!residents_house_id_fkey (
-                address
+            if (
+              requestedResident
+            ) {
+              setForm(
+                (
+                  current
+                ) => ({
+                  ...current,
+
+                  resident_id:
+                    requestedResident,
+                })
               )
-            `)
-            .eq(
-              'is_active',
-              true
-            )
-            .order(
-              'full_name'
-            ),
-        ])
-
-      if (!active) {
-        return
-      }
-
-      const firstError =
-        dueResult.error ??
-        houseResult.error ??
-        residentResult.error
-
-      if (
-        firstError
-      ) {
-        setError(
-          firstError.message
+            }
+          },
+          0
         )
 
-        return
+      return () => {
+        window.clearTimeout(
+          timer
+        )
+      }
+    },
+    []
+  )
+
+  useEffect(
+    () => {
+      let active =
+        true
+
+      async function load() {
+        const [
+          dueResult,
+          houseResult,
+          residentResult,
+        ] =
+          await Promise.all([
+            supabase
+              .from(
+                'due_types'
+              )
+              .select(
+                'id, name, amount, frequency, billing_scope'
+              )
+              .order(
+                'name'
+              ),
+
+            supabase
+              .from(
+                'houses'
+              )
+              .select(`
+                id,
+                address,
+                house_type,
+                street_id,
+                billing_responsible_resident_id,
+                streets (
+                  name
+                ),
+                residents:residents!residents_house_id_fkey (
+                  id,
+                  full_name,
+                  relationship,
+                  is_active
+                )
+              `)
+              .order(
+                'address'
+              ),
+
+            supabase
+              .from(
+                'residents'
+              )
+              .select(`
+                id,
+                house_id,
+                full_name,
+                move_in_date,
+                property_allocation_date,
+                houses:houses!residents_house_id_fkey (
+                  address
+                )
+              `)
+              .eq(
+                'is_active',
+                true
+              )
+              .order(
+                'full_name'
+              ),
+          ])
+
+        if (
+          !active
+        ) {
+          return
+        }
+
+        const firstError =
+          dueResult.error ??
+          houseResult.error ??
+          residentResult.error
+
+        if (
+          firstError
+        ) {
+          setError(
+            firstError.message
+          )
+
+          return
+        }
+
+        setDueTypes(
+          (
+            dueResult.data ??
+            []
+          ) as unknown as DueType[]
+        )
+
+        setHouses(
+          (
+            houseResult.data ??
+            []
+          ) as unknown as House[]
+        )
+
+        setResidents(
+          (
+            residentResult.data ??
+            []
+          ) as unknown as Resident[]
+        )
       }
 
-      setDueTypes(
-        (
-          dueResult.data ??
-          []
-        ) as unknown as DueType[]
-      )
+      void load()
 
-      setHouses(
-        (
-          houseResult.data ??
-          []
-        ) as unknown as House[]
-      )
-
-      setResidents(
-        (
-          residentResult.data ??
-          []
-        ) as unknown as Resident[]
-      )
-    }
-
-    void load()
-
-    return () => {
-      active =
-        false
-    }
-  }, [supabase])
+      return () => {
+        active =
+          false
+      }
+    },
+    [
+      supabase,
+    ]
+  )
 
   const houseDueTypes =
     useMemo(
@@ -289,10 +369,13 @@ export default function GenerateInvoicesPage() {
           (
             dueType
           ) =>
-            dueType.billing_scope ===
+            dueType
+              .billing_scope ===
             'house'
         ),
-      [dueTypes]
+      [
+        dueTypes,
+      ]
     )
 
   const residentDueTypes =
@@ -302,10 +385,13 @@ export default function GenerateInvoicesPage() {
           (
             dueType
           ) =>
-            dueType.billing_scope ===
+            dueType
+              .billing_scope ===
             'resident'
         ),
-      [dueTypes]
+      [
+        dueTypes,
+      ]
     )
 
   const selectedDueType =
@@ -355,9 +441,7 @@ export default function GenerateInvoicesPage() {
           ) {
             byId.set(
               house.street_id,
-              house
-                .streets
-                .name
+              house.streets.name
             )
           }
         }
@@ -384,7 +468,9 @@ export default function GenerateInvoicesPage() {
               )
           )
       },
-      [houses]
+      [
+        houses,
+      ]
     )
 
   const housesForStreet =
@@ -419,7 +505,9 @@ export default function GenerateInvoicesPage() {
             .trim()
             .toLowerCase()
 
-        if (!query) {
+        if (
+          !query
+        ) {
           return housesForStreet
         }
 
@@ -495,7 +583,6 @@ export default function GenerateInvoicesPage() {
       ? makeSingleHousePeriod(
           selectedDueType
             .frequency,
-
           form
         )
       : null
@@ -509,7 +596,6 @@ export default function GenerateInvoicesPage() {
       ? makeHouseRange(
           selectedDueType
             .frequency,
-
           form
         )
       : null
@@ -545,7 +631,8 @@ export default function GenerateInvoicesPage() {
           if (
             delegated
           ) {
-            return delegated.full_name
+            return delegated
+              .full_name
           }
         }
 
@@ -564,7 +651,9 @@ export default function GenerateInvoicesPage() {
           null
         )
       },
-      [selectedHouse]
+      [
+        selectedHouse,
+      ]
     )
 
   function resetResultState() {
@@ -632,7 +721,8 @@ export default function GenerateInvoicesPage() {
   }
 
   function selectStreet(
-    value: string
+    value:
+      string
   ) {
     setStreetFilter(
       value
@@ -659,7 +749,8 @@ export default function GenerateInvoicesPage() {
         )
 
       if (
-        selected?.street_id !==
+        selected
+          ?.street_id !==
         value
       ) {
         setSelectedHouseId(
@@ -670,7 +761,8 @@ export default function GenerateInvoicesPage() {
   }
 
   function selectResident(
-    residentId: string
+    residentId:
+      string
   ) {
     const resident =
       residents.find(
@@ -2726,159 +2818,31 @@ export default function GenerateInvoicesPage() {
                     </button>
 
                     {housePreview && (
-                      <div className="border rounded-xl overflow-hidden">
-                        <div className="p-4 border-b bg-gray-50">
-                          <h2 className="font-semibold">
-                            Household Invoice Preview
-                          </h2>
-
-                          <p className="text-sm text-gray-600 mt-1">
-                            {
-                              housePreview.address
-                            }
-                            {' · '}
-                            {
-                              housePreview.due_type_name
-                            }
-                          </p>
-
-                          <p className="text-xs text-gray-500 mt-1">
-                            Billing contact:{' '}
-                            {housePreview.billing_contact_name ??
-                              'Not assigned'}
-                          </p>
-                        </div>
-
-                        <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr>
-                                <th className="p-3 text-left">
-                                  Period
-                                </th>
-
-                                <th className="p-3 text-left">
-                                  Due date
-                                </th>
-
-                                <th className="p-3 text-right">
-                                  Amount
-                                </th>
-
-                                <th className="p-3 text-left">
-                                  Result
-                                </th>
-                              </tr>
-                            </thead>
-
-                            <tbody>
-                              {housePreview.periods.map(
-                                (
-                                  period
-                                ) => (
-                                  <tr
-                                    key={`${period.period_start}-${period.period_end}`}
-                                    className="border-t"
-                                  >
-                                    <td className="p-3">
-                                      {
-                                        period.period_label
-                                      }
-                                    </td>
-
-                                    <td className="p-3">
-                                      {displayDate(
-                                        period.due_date
-                                      )}
-                                    </td>
-
-                                    <td className="p-3 text-right">
-                                      {naira(
-                                        Number(
-                                          period.amount
-                                        )
-                                      )}
-                                    </td>
-
-                                    <td className="p-3">
-                                      {period.already_exists
-                                        ? 'Already invoiced — will skip'
-                                        : 'Will create'}
-                                    </td>
-                                  </tr>
-                                )
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <div className="p-4 border-t bg-gray-50 text-sm">
-                          <p>
-                            <strong>
-                              {
-                                housePreview.create_count
-                              }
-                            </strong>{' '}
-                            new invoice
-                            {housePreview.create_count ===
-                            1
-                              ? ''
-                              : 's'}
-                          </p>
-
-                          {housePreview.duplicate_count >
-                            0 && (
-                            <p>
-                              <strong>
-                                {
-                                  housePreview.duplicate_count
-                                }
-                              </strong>{' '}
-                              existing period
-                              {housePreview.duplicate_count ===
-                              1
-                                ? ''
-                                : 's'}{' '}
-                              will be skipped.
-                            </p>
-                          )}
-
-                          <p className="mt-2 text-base">
-                            Total new billing:{' '}
-                            <strong>
-                              {naira(
-                                Number(
-                                  housePreview.total_to_create
-                                )
-                              )}
-                            </strong>
-                          </p>
-                        </div>
-
-                        <div className="p-4">
-                          <button
-                            type="button"
-                            disabled={
-                              loading ||
-                              housePreview.create_count ===
-                                0
-                            }
-                            onClick={
-                              generateSingleHousehold
-                            }
-                            className="action disabled:opacity-50"
-                          >
-                            {loading
-                              ? 'Generating...'
-                              : `Generate ${housePreview.create_count} Invoice${
-                                  housePreview.create_count ===
-                                  1
-                                    ? ''
-                                    : 's'
-                                }`}
-                          </button>
-                        </div>
-                      </div>
+                      <InvoiceGenerationPreview
+                        title="Household Invoice Preview"
+                        subtitle={`${housePreview.address} · ${housePreview.due_type_name}`}
+                        billingContact={
+                          housePreview.billing_contact_name
+                        }
+                        periods={
+                          housePreview.periods
+                        }
+                        createCount={
+                          housePreview.create_count
+                        }
+                        duplicateCount={
+                          housePreview.duplicate_count
+                        }
+                        totalToCreate={
+                          housePreview.total_to_create
+                        }
+                        loading={
+                          loading
+                        }
+                        onGenerate={
+                          generateSingleHousehold
+                        }
+                      />
                     )}
                   </div>
                 )}
@@ -2940,6 +2904,7 @@ export default function GenerateInvoicesPage() {
                           {
                             resident.full_name
                           }
+
                           {resident.houses
                             ?.address
                             ? ` — ${resident.houses.address}`
@@ -3228,154 +3193,28 @@ export default function GenerateInvoicesPage() {
                 </button>
 
                 {residentPreview && (
-                  <div className="border rounded-xl overflow-hidden">
-                    <div className="p-4 border-b bg-gray-50">
-                      <h2 className="font-semibold">
-                        Invoice Preview
-                      </h2>
-
-                      <p className="text-sm text-gray-600 mt-1">
-                        {
-                          residentPreview.resident_name
-                        }
-                        {' · '}
-                        {
-                          residentPreview.due_type_name
-                        }
-                      </p>
-                    </div>
-
-                    <div className="overflow-x-auto max-h-80 overflow-y-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr>
-                            <th className="p-3 text-left">
-                              Period
-                            </th>
-
-                            <th className="p-3 text-left">
-                              Due date
-                            </th>
-
-                            <th className="p-3 text-right">
-                              Amount
-                            </th>
-
-                            <th className="p-3 text-left">
-                              Result
-                            </th>
-                          </tr>
-                        </thead>
-
-                        <tbody>
-                          {residentPreview.periods.map(
-                            (
-                              period
-                            ) => (
-                              <tr
-                                key={`${period.period_start}-${period.period_end}`}
-                                className="border-t"
-                              >
-                                <td className="p-3">
-                                  {
-                                    period.period_label
-                                  }
-                                </td>
-
-                                <td className="p-3">
-                                  {displayDate(
-                                    period.due_date
-                                  )}
-                                </td>
-
-                                <td className="p-3 text-right">
-                                  {naira(
-                                    Number(
-                                      period.amount
-                                    )
-                                  )}
-                                </td>
-
-                                <td className="p-3">
-                                  {period.already_exists
-                                    ? 'Already invoiced — will skip'
-                                    : 'Will create'}
-                                </td>
-                              </tr>
-                            )
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="p-4 border-t bg-gray-50 text-sm">
-                      <p>
-                        <strong>
-                          {
-                            residentPreview.create_count
-                          }
-                        </strong>{' '}
-                        new invoice
-                        {residentPreview.create_count ===
-                        1
-                          ? ''
-                          : 's'}
-                      </p>
-
-                      {residentPreview.duplicate_count >
-                        0 && (
-                        <p>
-                          <strong>
-                            {
-                              residentPreview.duplicate_count
-                            }
-                          </strong>{' '}
-                          existing period
-                          {residentPreview.duplicate_count ===
-                          1
-                            ? ''
-                            : 's'}{' '}
-                          will be skipped.
-                        </p>
-                      )}
-
-                      <p className="mt-2 text-base">
-                        Total new billing:{' '}
-
-                        <strong>
-                          {naira(
-                            Number(
-                              residentPreview.total_to_create
-                            )
-                          )}
-                        </strong>
-                      </p>
-                    </div>
-
-                    <div className="p-4">
-                      <button
-                        type="button"
-                        disabled={
-                          loading ||
-                          residentPreview.create_count ===
-                            0
-                        }
-                        onClick={
-                          generateResidentInvoices
-                        }
-                        className="action disabled:opacity-50"
-                      >
-                        {loading
-                          ? 'Generating...'
-                          : `Generate ${residentPreview.create_count} Invoice${
-                              residentPreview.create_count ===
-                              1
-                                ? ''
-                                : 's'
-                            }`}
-                      </button>
-                    </div>
-                  </div>
+                  <InvoiceGenerationPreview
+                    title="Invoice Preview"
+                    subtitle={`${residentPreview.resident_name} · ${residentPreview.due_type_name}`}
+                    periods={
+                      residentPreview.periods
+                    }
+                    createCount={
+                      residentPreview.create_count
+                    }
+                    duplicateCount={
+                      residentPreview.duplicate_count
+                    }
+                    totalToCreate={
+                      residentPreview.total_to_create
+                    }
+                    loading={
+                      loading
+                    }
+                    onGenerate={
+                      generateResidentInvoices
+                    }
+                  />
                 )}
               </div>
             )}
@@ -3409,6 +3248,7 @@ export default function GenerateInvoicesPage() {
                   0 && (
                   <>
                     {' '}
+
                     <strong>
                       {
                         summary.skipped
