@@ -9,6 +9,9 @@ import {
 import assert from 'node:assert/strict'
 
 const details = {
+  source_type:
+    'resident',
+
   name:
     'Sample Resident',
 
@@ -41,164 +44,23 @@ const details = {
   ],
 }
 
-function setup({
-  duplicate = false,
-  insertFails = false,
-} = {}) {
-  const jobs = [
-    {
-      id:
-        'email-job',
-
-      alert_id:
-        'scan-1',
-
-      recipient:
-        'resident@example.test',
-
-      audience:
-        'resident',
-
-      attempts:
-        1,
-    },
-  ]
-
-  const inserted = []
-  const updates = []
-
-  const db = {
-    async rpc() {
-      return {
-        data:
-          jobs.splice(
-            0,
-            1
-          ),
-
-        error:
-          null,
-      }
-    },
-
-    from(
-      table
-    ) {
-      if (
-        table ===
-        'gate_due_alerts'
-      ) {
-        return {
-          select() {
-            return {
-              eq() {
-                return {
-                  async single() {
-                    return {
-                      data: {
-                        details,
-                      },
-
-                      error:
-                        null,
-                    }
-                  },
-                }
-              },
-            }
-          },
-        }
-      }
-
-      if (
-        table ===
-        'notification_outbox'
-      ) {
-        return {
-          async insert(
-            value
-          ) {
-            inserted.push(
-              value
-            )
-
-            if (
-              duplicate
-            ) {
-              return {
-                error: {
-                  code:
-                    '23505',
-                },
-              }
-            }
-
-            if (
-              insertFails
-            ) {
-              return {
-                error: {
-                  code:
-                    '50000',
-                },
-              }
-            }
-
-            return {
-              error:
-                null,
-            }
-          },
-        }
-      }
-
-      if (
-        table ===
-        'gate_due_emails'
-      ) {
-        return {
-          update(
-            value
-          ) {
-            updates.push(
-              value
-            )
-
-            return {
-              eq() {
-                return {
-                  async eq() {
-                    return {
-                      error:
-                        null,
-                    }
-                  },
-                }
-              },
-            }
-          },
-        }
-      }
-
-      throw new Error(
-        `Unexpected table: ${table}`
-      )
-    },
-  }
-
-  const compiled = {
+function loadGateFormatting() {
+  const loaded = {
     exports: {},
   }
 
-  const js =
-    ts.transpileModule(
-      fs.readFileSync(
-        new URL(
-          '../src/lib/gate-due-emails.ts',
-          import.meta.url
-        ),
-        'utf8'
+  const source =
+    fs.readFileSync(
+      new URL(
+        '../src/lib/gate-due-emails.ts',
+        import.meta.url
       ),
+      'utf8'
+    )
+
+  const compiled =
+    ts.transpileModule(
+      source,
       {
         compilerOptions: {
           module:
@@ -211,13 +73,13 @@ function setup({
     ).outputText
 
   vm.runInNewContext(
-    js,
+    compiled,
     {
       module:
-        compiled,
+        loaded,
 
       exports:
-        compiled.exports,
+        loaded.exports,
 
       Date,
       Intl,
@@ -232,128 +94,26 @@ function setup({
           return {}
         }
 
-        return {
-          createServiceClient:
-            () =>
-              db,
-        }
+        throw new Error(
+          `Unexpected module: ${name}`
+        )
       },
     }
   )
 
-  return {
-    ...compiled.exports,
-    inserted,
-    updates,
-  }
+  return loaded.exports
 }
 
 test(
-  'gate email is moved into the shared notification outbox',
-  async () => {
-    const env =
-      setup()
-
-    const result =
-      await env
-        .queueGateDueEmails()
-
-    assert.equal(
-      result.migrated,
-      1
-    )
-
-    assert.equal(
-      env.inserted.length,
-      1
-    )
-
-    assert.equal(
-      env.inserted[0]
-        .event_key,
-      'gate:email-job'
-    )
-
-    assert.equal(
-      env.inserted[0]
-        .kind,
-      'gate'
-    )
-
-    assert.equal(
-      env.inserted[0]
-        .channel,
-      'email'
-    )
-
-    assert.equal(
-      env.updates.at(-1)
-        .status,
-      'migrated'
-    )
-  }
-)
-
-test(
-  'duplicate outbox event safely marks legacy job as migrated',
-  async () => {
-    const env =
-      setup({
-        duplicate:
-          true,
-      })
-
-    const result =
-      await env
-        .queueGateDueEmails()
-
-    assert.equal(
-      result.duplicates,
-      1
-    )
-
-    assert.equal(
-      env.updates.at(-1)
-        .status,
-      'migrated'
-    )
-  }
-)
-
-test(
-  'failed outbox insert returns legacy email to pending',
-  async () => {
-    const env =
-      setup({
-        insertFails:
-          true,
-      })
-
-    const result =
-      await env
-        .queueGateDueEmails()
-
-    assert.equal(
-      result.failed,
-      1
-    )
-
-    assert.equal(
-      env.updates.at(-1)
-        .status,
-      'pending'
-    )
-  }
-)
-
-test(
-  'administrator notification contains entrant and household balance',
+  'administrator gate notification identifies entrant and household balance',
   () => {
-    const env =
-      setup()
+    const {
+      gateDueMessage,
+    } =
+      loadGateFormatting()
 
     const text =
-      env.gateDueMessage(
+      gateDueMessage(
         details,
         'admin'
       )
@@ -376,6 +136,343 @@ test(
     assert.match(
       text,
       /4,000.00/
+    )
+  }
+)
+
+test(
+  'visitor gate notification uses visitor-specific subject',
+  () => {
+    const {
+      gateDueSubject,
+    } =
+      loadGateFormatting()
+
+    assert.equal(
+      gateDueSubject(
+        {
+          ...details,
+
+          source_type:
+            'visitor',
+        },
+        'admin'
+      ),
+      'Visitor entry: household with unpaid dues'
+    )
+  }
+)
+
+test(
+  'shared notification worker resolves gate alert before sending email',
+  async () => {
+    const jobs = [
+      {
+        id:
+          'outbox-job',
+
+        event_key:
+          'gate:test',
+
+        kind:
+          'gate',
+
+        channel:
+          'email',
+
+        recipient:
+          'admin@example.test',
+
+        subject:
+          null,
+
+        body:
+          JSON.stringify({
+            alert_id:
+              '11111111-1111-1111-1111-111111111111',
+
+            audience:
+              'admin',
+          }),
+
+        status:
+          'sending',
+
+        attempts:
+          1,
+      },
+    ]
+
+    const requests = []
+    const updates = []
+
+    const db = {
+      async rpc() {
+        return {
+          data:
+            jobs.splice(
+              0,
+              1
+            ),
+
+          error:
+            null,
+        }
+      },
+
+      from(
+        table
+      ) {
+        if (
+          table ===
+          'gate_due_alerts'
+        ) {
+          return {
+            select() {
+              return {
+                eq() {
+                  return {
+                    async single() {
+                      return {
+                        data: {
+                          details,
+                        },
+
+                        error:
+                          null,
+                      }
+                    },
+                  }
+                },
+              }
+            },
+          }
+        }
+
+        if (
+          table ===
+          'notification_outbox'
+        ) {
+          return {
+            update(
+              values
+            ) {
+              updates.push(
+                values
+              )
+
+              return {
+                eq() {
+                  return {
+                    async eq() {
+                      return {
+                        error:
+                          null,
+                      }
+                    },
+                  }
+                },
+              }
+            },
+          }
+        }
+
+        throw new Error(
+          `Unexpected table: ${table}`
+        )
+      },
+    }
+
+    const loaded = {
+      exports: {},
+    }
+
+    const source =
+      fs.readFileSync(
+        new URL(
+          '../src/lib/notification-worker.ts',
+          import.meta.url
+        ),
+        'utf8'
+      )
+
+    const compiled =
+      ts.transpileModule(
+        source,
+        {
+          compilerOptions: {
+            module:
+              ts.ModuleKind.CommonJS,
+
+            target:
+              ts.ScriptTarget.ES2022,
+          },
+        }
+      ).outputText
+
+    vm.runInNewContext(
+      compiled,
+      {
+        module:
+          loaded,
+
+        exports:
+          loaded.exports,
+
+        process: {
+          env: {
+            RESEND_API_KEY:
+              'test-key',
+
+            RESEND_FROM_EMAIL:
+              'Zadant <sender@example.test>',
+          },
+        },
+
+        Date,
+        JSON,
+        Promise,
+        AbortSignal,
+
+        fetch:
+          async (
+            url,
+            options
+          ) => {
+            requests.push({
+              url,
+              options,
+            })
+
+            return {
+              ok:
+                true,
+
+              status:
+                200,
+
+              async json() {
+                return {
+                  id:
+                    'provider-id',
+                }
+              },
+            }
+          },
+
+        require(
+          name
+        ) {
+          if (
+            name ===
+            'server-only'
+          ) {
+            return {}
+          }
+
+          if (
+            name.endsWith(
+              '/supabase/service'
+            )
+          ) {
+            return {
+              createServiceClient:
+                () =>
+                  db,
+            }
+          }
+
+          if (
+            name.endsWith(
+              '/sms'
+            )
+          ) {
+            return {
+              sendSms:
+                async () => ({
+                  status:
+                    'accepted',
+
+                  message:
+                    'accepted',
+                }),
+            }
+          }
+
+          if (
+            name.endsWith(
+              '/gate-due-emails'
+            )
+          ) {
+            return {
+              gateDueSubject:
+                (
+                  _details,
+                  audience
+                ) =>
+                  `SUBJECT:${audience}`,
+
+              gateDueMessage:
+                (
+                  gateDetails,
+                  audience
+                ) =>
+                  `BODY:${gateDetails.name}:${audience}`,
+            }
+          }
+
+          throw new Error(
+            `Unexpected module: ${name}`
+          )
+        },
+      }
+    )
+
+    const result =
+      await loaded
+        .exports
+        .processNotificationQueue({
+          kind:
+            'gate',
+
+          maxJobs:
+            1,
+
+          deadlineMs:
+            1000,
+        })
+
+    assert.equal(
+      result.emailsSent,
+      1
+    )
+
+    assert.equal(
+      requests.length,
+      1
+    )
+
+    const requestBody =
+      JSON.parse(
+        requests[0]
+          .options
+          .body
+      )
+
+    assert.equal(
+      requestBody.subject,
+      'SUBJECT:admin'
+    )
+
+    assert.equal(
+      requestBody.text,
+      'BODY:Sample Resident:admin'
+    )
+
+    assert.equal(
+      updates.at(-1)
+        .status,
+      'sent'
     )
   }
 )

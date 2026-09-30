@@ -8,8 +8,15 @@ import {
   sendSms,
 } from '@/lib/sms'
 
+import {
+  gateDueMessage,
+  gateDueSubject,
+  type GateDueDetails,
+} from '@/lib/gate-due-emails'
+
 type NotificationJob = {
-  id: string
+  id:
+    string
 
   event_key:
     string
@@ -68,6 +75,15 @@ type ProcessOptions = {
     number
 }
 
+type GateReference = {
+  alert_id:
+    string
+
+  audience:
+    'resident' |
+    'admin'
+}
+
 async function updateJob(
   job:
     NotificationJob,
@@ -111,6 +127,144 @@ async function updateJob(
   }
 }
 
+function parseGateReference(
+  value:
+    string
+): GateReference {
+  let parsed:
+    unknown
+
+  try {
+    parsed =
+      JSON.parse(
+        value
+      )
+  } catch {
+    throw new Error(
+      'Invalid gate notification reference'
+    )
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !==
+      'object'
+  ) {
+    throw new Error(
+      'Invalid gate notification reference'
+    )
+  }
+
+  const reference =
+    parsed as {
+      alert_id?:
+        unknown
+
+      audience?:
+        unknown
+    }
+
+  if (
+    typeof reference
+      .alert_id !==
+      'string' ||
+    !/^[a-f\d-]{36}$/i.test(
+      reference.alert_id
+    ) ||
+    (
+      reference.audience !==
+        'resident' &&
+      reference.audience !==
+        'admin'
+    )
+  ) {
+    throw new Error(
+      'Invalid gate notification reference'
+    )
+  }
+
+  return {
+    alert_id:
+      reference.alert_id,
+
+    audience:
+      reference.audience,
+  }
+}
+
+async function resolveEmailContent(
+  job:
+    NotificationJob
+) {
+  if (
+    job.kind !==
+    'gate'
+  ) {
+    return {
+      subject:
+        job.subject ??
+        'Zadant notification',
+
+      body:
+        job.body,
+    }
+  }
+
+  const reference =
+    parseGateReference(
+      job.body
+    )
+
+  const db =
+    createServiceClient()
+
+  const {
+    data:
+      alert,
+
+    error,
+  } =
+    await db
+      .from(
+        'gate_due_alerts'
+      )
+      .select(
+        'details'
+      )
+      .eq(
+        'id',
+        reference.alert_id
+      )
+      .single()
+
+  if (
+    error ||
+    !alert
+  ) {
+    throw new Error(
+      'Gate alert details are unavailable'
+    )
+  }
+
+  const details =
+    alert.details as
+      GateDueDetails
+
+  return {
+    subject:
+      gateDueSubject(
+        details,
+        reference.audience
+      ),
+
+    body:
+      gateDueMessage(
+        details,
+        reference.audience
+      ),
+  }
+}
+
 async function sendEmail(
   job:
     NotificationJob
@@ -135,6 +289,40 @@ async function sendEmail(
 
         last_error:
           'Resend is not configured.',
+      }
+    )
+
+    return {
+      sent:
+        false,
+
+      failed:
+        true,
+    }
+  }
+
+  let content: {
+    subject:
+      string
+
+    body:
+      string
+  }
+
+  try {
+    content =
+      await resolveEmailContent(
+        job
+      )
+  } catch {
+    await updateJob(
+      job,
+      {
+        status:
+          'failed',
+
+        last_error:
+          'Notification content could not be prepared.',
       }
     )
 
@@ -175,11 +363,10 @@ async function sendEmail(
               ],
 
               subject:
-                job.subject ??
-                'Zadant notification',
+                content.subject,
 
               text:
-                job.body,
+                content.body,
             }),
 
           signal:

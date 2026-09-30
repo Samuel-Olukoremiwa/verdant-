@@ -8,10 +8,6 @@ import {
 } from '@/lib/supabase/server'
 
 import {
-  queueGateDueEmails,
-} from '@/lib/gate-due-emails'
-
-import {
   processNotificationQueue,
 } from '@/lib/notification-worker'
 
@@ -147,14 +143,6 @@ export async function POST(
     after(
       async () => {
         try {
-          await queueGateDueEmails({
-            maxJobs:
-              10,
-
-            deadlineMs:
-              5000,
-          })
-
           await processNotificationQueue({
             kind:
               'gate',
@@ -163,7 +151,7 @@ export async function POST(
               10,
 
             deadlineMs:
-              12000,
+              15000,
           })
         } catch {
           console.error(
