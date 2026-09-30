@@ -1,78 +1,194 @@
-import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { readAll } from '@/lib/read-all'
-import { InvoicesTable } from '@/components/invoices-table'
-import { SendRemindersButton } from '@/components/send-reminders-button'
 
-export default async function InvoicesPage() {
-  const supabase = await createClient()
+import {
+  InvoicesTable,
+} from '@/components/invoices-table'
 
-  const rawInvoices = await readAll((from, to) =>
-    supabase
-      .from('invoices')
-      .select(`
-        id,
-        house_id,
-        resident_id,
-        period_label,
-        amount,
-        amount_paid,
-        status,
-        due_date,
-        houses ( address ),
-        residents ( full_name ),
-        due_types ( name, billing_scope )
-      `)
-      .order('created_at', { ascending: false })
-      .order('id')
-      .range(from, to)
-  )
+import {
+  SendRemindersButton,
+} from '@/components/send-reminders-button'
 
-  const invoices = (rawInvoices ?? []) as unknown as {
-    id: string
-    house_id: string | null
-    resident_id: string | null
-    period_label: string | null
-    amount: number
-    amount_paid: number | null
-    status: string
-    due_date: string | null
-    houses: { address: string } | null
-    residents: { full_name: string } | null
-    due_types: { name: string; billing_scope: 'house' | 'resident' } | null
-  }[]
+import {
+  normalizeInvoiceFilters,
+} from '@/lib/invoices-directory'
+
+import {
+  loadInvoicesDirectory,
+} from '@/lib/invoices-directory-server'
+
+import {
+  createClient,
+} from '@/lib/supabase/server'
+
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams:
+    Promise<
+      Record<
+        string,
+        | string
+        | string[]
+        | undefined
+      >
+    >
+}) {
+  const params =
+    await searchParams
+
+  const filters =
+    normalizeInvoiceFilters(
+      params
+    )
+
+  const supabase =
+    await createClient()
+
+  let directory =
+    await loadInvoicesDirectory(
+      supabase,
+      filters
+    )
+
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        directory.total /
+          directory.pageSize
+      )
+    )
+
+  const effectivePage =
+    Math.min(
+      filters.page,
+      totalPages
+    )
+
+  if (
+    effectivePage !==
+    filters.page
+  ) {
+    directory =
+      await loadInvoicesDirectory(
+        supabase,
+        {
+          ...filters,
+          page:
+            effectivePage,
+        }
+      )
+  }
+
+  const effectiveFilters = {
+    ...filters,
+    page:
+      effectivePage,
+  }
+
+  const tableKey = [
+    effectiveFilters.query,
+    effectiveFilters.target ??
+      '',
+    effectiveFilters.scope,
+    effectiveFilters.charge ??
+      '',
+    effectiveFilters.period ??
+      '',
+    effectiveFilters.dueDate ??
+      '',
+    effectiveFilters.status,
+    effectiveFilters.outstanding,
+    effectiveFilters.page,
+  ].join('|')
 
   return (
     <div className="page-wrap">
       <div className="dashboard-header">
         <div>
-          <span className="eyebrow">Dues &amp; billing</span>
-          <h1 className="page-title">All Invoices</h1>
+          <span className="eyebrow">
+            Dues &amp; billing
+          </span>
+
+          <h1 className="page-title">
+            All Invoices
+          </h1>
+
           <p className="page-lead">
             Household and personal charges, clearly separated in one place.
           </p>
         </div>
+
         <div className="header-actions">
-          <Link href="/admin/due-types" className="action secondary">
+          <Link
+            href="/admin/due-types"
+            className="action secondary"
+          >
             Due types
           </Link>
-          <Link href="/admin/invoices/generate" className="action">
+
+          <Link
+            href="/admin/invoices/generate"
+            className="action"
+          >
             + Generate dues
           </Link>
         </div>
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
+      <div
+        style={{
+          marginBottom:
+            '1rem',
+        }}
+      >
         <SendRemindersButton />
       </div>
 
-      <InvoicesTable invoices={invoices} />
+      <InvoicesTable
+        key={
+          tableKey
+        }
+        invoices={
+          directory.rows
+        }
+        total={
+          directory.total
+        }
+        totalBilled={
+          directory.totalBilled
+        }
+        totalOutstanding={
+          directory.totalOutstanding
+        }
+        page={
+          effectivePage
+        }
+        pageSize={
+          directory.pageSize
+        }
+        options={
+          directory.options
+        }
+        filters={
+          effectiveFilters
+        }
+      />
     </div>
   )
 }
 
 export const metadata = {
-  title: 'Admin Invoices',
-  description: 'Manage your estate account and workspace with Zadant.',
-  robots: { index: false, follow: false },
+  title:
+    'Admin Invoices',
+
+  description:
+    'Manage your estate account and workspace with Zadant.',
+
+  robots: {
+    index:
+      false,
+    follow:
+      false,
+  },
 }
