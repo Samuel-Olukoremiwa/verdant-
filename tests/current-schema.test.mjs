@@ -94,6 +94,8 @@ const sqlFiles = [
   'migration_registration_atomic_decline.sql',
 
   'migration_payment_transactions_foundation.sql',
+
+  'migration_payment_transactions_resident_access.sql',
 ]
 
 function sql(
@@ -175,6 +177,12 @@ async function createDatabase() {
       )
     )
   }
+
+  await db.exec(`
+    GRANT SELECT
+    ON public.residents
+    TO authenticated;
+  `)
 
   return db
 }
@@ -273,6 +281,11 @@ test(
         [
           'payment_transactions',
           'reference',
+        ],
+
+        [
+          'payment_transactions',
+          'payment_code',
         ],
 
         [
@@ -467,6 +480,10 @@ test(
         'payment_transactions_currency_check',
 
         'payment_transactions_status_check',
+
+        'payment_transactions_payment_code_unique',
+
+        'payment_transactions_payment_code_format',
 
         'registration_phone_format',
 
@@ -837,6 +854,28 @@ test(
       assert.ok(
         payment.transaction_id
       )
+
+      const transaction =
+        await first(
+          db,
+          `
+            SELECT
+              payment_code
+
+            FROM public.payment_transactions
+
+            WHERE id =
+              $1
+          `,
+          [
+            payment.transaction_id,
+          ]
+        )
+
+      assert.match(
+        transaction.payment_code,
+        /^PAY-[0-9]{6}-[0-9]{6,}$/
+      )
     } finally {
       await db.close()
     }
@@ -1123,10 +1162,6 @@ test(
         token.id
       )
 
-      /*
-       * Simulate a server that died without releasing
-       * the claim.
-       */
       await db.query(
         `
           UPDATE public.registration_requests
@@ -1437,6 +1472,7 @@ test(
           `
             SELECT
               id,
+              payment_code,
               reference,
               resident_id,
               provider,
@@ -1454,6 +1490,11 @@ test(
             reference,
           ]
         )
+
+      assert.match(
+        transaction.payment_code,
+        /^PAY-[0-9]{6}-[0-9]{6,}$/
+      )
 
       assert.equal(
         transaction.reference,
@@ -1755,6 +1796,7 @@ test(
           `
             SELECT
               id,
+              payment_code,
               provider,
               amount,
               status,
@@ -1773,6 +1815,11 @@ test(
       assert.equal(
         transaction.id,
         payment.transaction_id
+      )
+
+      assert.match(
+        transaction.payment_code,
+        /^PAY-[0-9]{6}-[0-9]{6,}$/
       )
 
       assert.equal(
@@ -1794,6 +1841,317 @@ test(
 
       assert.ok(
         transaction.paid_at
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'residents can read only their own payment transactions',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const userOne =
+        '11111111-1111-4111-8111-111111111111'
+
+      const userTwo =
+        '22222222-2222-4222-8222-222222222222'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES
+            (
+              $1,
+              'resident-one@example.test'
+            ),
+            (
+              $2,
+              'resident-two@example.test'
+            )
+        `,
+        [
+          userOne,
+          userTwo,
+        ]
+      )
+
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Transaction Access Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const houseOne =
+        await first(
+          db,
+          `
+            INSERT INTO public.houses (
+              address,
+              street_id,
+              house_number
+            )
+
+            VALUES (
+              'House 801',
+              $1,
+              '801'
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      const houseTwo =
+        await first(
+          db,
+          `
+            INSERT INTO public.houses (
+              address,
+              street_id,
+              house_number
+            )
+
+            VALUES (
+              'House 802',
+              $1,
+              '802'
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      const residentOne =
+        await first(
+          db,
+          `
+            INSERT INTO public.residents (
+              auth_user_id,
+              house_id,
+              full_name,
+              phone,
+              email,
+              relationship,
+              move_in_date,
+              property_allocation_date
+            )
+
+            VALUES (
+              $1,
+              $2,
+              'Transaction Resident One',
+              '08011111111',
+              'resident-one@example.test',
+              'owner',
+              '2026-09-01',
+              '2026-08-01'
+            )
+
+            RETURNING id
+          `,
+          [
+            userOne,
+            houseOne.id,
+          ]
+        )
+
+      const residentTwo =
+        await first(
+          db,
+          `
+            INSERT INTO public.residents (
+              auth_user_id,
+              house_id,
+              full_name,
+              phone,
+              email,
+              relationship,
+              move_in_date,
+              property_allocation_date
+            )
+
+            VALUES (
+              $1,
+              $2,
+              'Transaction Resident Two',
+              '08022222222',
+              'resident-two@example.test',
+              'owner',
+              '2026-09-01',
+              '2026-08-01'
+            )
+
+            RETURNING id
+          `,
+          [
+            userTwo,
+            houseTwo.id,
+          ]
+        )
+
+      const transactionOne =
+        await first(
+          db,
+          `
+            INSERT INTO public.payment_transactions (
+              reference,
+              resident_id,
+              provider,
+              amount,
+              currency,
+              status,
+              paid_at
+            )
+
+            VALUES (
+              'ACCESS-TRANSACTION-ONE',
+              $1,
+              'manual',
+              1000,
+              'NGN',
+              'success',
+              now()
+            )
+
+            RETURNING
+              id,
+              payment_code
+          `,
+          [
+            residentOne.id,
+          ]
+        )
+
+      await db.query(
+        `
+          INSERT INTO public.payment_transactions (
+            reference,
+            resident_id,
+            provider,
+            amount,
+            currency,
+            status,
+            paid_at
+          )
+
+          VALUES (
+            'ACCESS-TRANSACTION-TWO',
+            $1,
+            'manual',
+            2000,
+            'NGN',
+            'success',
+            now()
+          )
+        `,
+        [
+          residentTwo.id,
+        ]
+      )
+
+      assert.match(
+        transactionOne.payment_code,
+        /^PAY-[0-9]{6}-[0-9]{6,}$/
+      )
+
+      await db.exec(
+        'SET ROLE authenticated'
+      )
+
+      await db.query(
+        `
+          SELECT set_config(
+            'request.jwt.claim.sub',
+            $1,
+            false
+          )
+        `,
+        [
+          userOne,
+        ]
+      )
+
+      const visible =
+        await db.query(`
+          SELECT
+            reference,
+            payment_code
+
+          FROM public.payment_transactions
+
+          ORDER BY reference
+        `)
+
+      assert.equal(
+        visible.rows.length,
+        1
+      )
+
+      assert.equal(
+        visible.rows[0].reference,
+        'ACCESS-TRANSACTION-ONE'
+      )
+
+      const hidden =
+        await db.query(`
+          SELECT id
+
+          FROM public.payment_transactions
+
+          WHERE reference =
+            'ACCESS-TRANSACTION-TWO'
+        `)
+
+      assert.equal(
+        hidden.rows.length,
+        0
+      )
+
+      await assert.rejects(
+        db.query(
+          `
+            UPDATE public.payment_transactions
+
+            SET amount =
+              9999
+
+            WHERE id =
+              $1
+          `,
+          [
+            transactionOne.id,
+          ]
+        ),
+        /permission denied/
+      )
+
+      await db.exec(
+        'RESET ROLE'
       )
     } finally {
       await db.close()
