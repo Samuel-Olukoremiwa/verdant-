@@ -96,6 +96,8 @@ const sqlFiles = [
   'migration_payment_transactions_foundation.sql',
 
   'migration_payment_transactions_resident_access.sql',
+
+  'migration_collected_report_transaction_ids.sql',
 ]
 
 function sql(
@@ -2148,6 +2150,421 @@ test(
           ]
         ),
         /permission denied/
+      )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'collected report uses one canonical Payment ID across transaction allocations',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const adminAuthId =
+        '33333333-3333-4333-8333-333333333333'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES (
+            $1,
+            'report-admin@example.test'
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      await db.query(
+        `
+          INSERT INTO public.admins (
+            auth_user_id,
+            full_name,
+            role
+          )
+
+          VALUES (
+            $1,
+            'Report Test Admin',
+            'admin'
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Collected Report Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      const house =
+        await first(
+          db,
+          `
+            INSERT INTO public.houses (
+              address,
+              street_id,
+              house_number
+            )
+
+            VALUES (
+              'House 900',
+              $1,
+              '900'
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      const resident =
+        await first(
+          db,
+          `
+            INSERT INTO public.residents (
+              house_id,
+              full_name,
+              phone,
+              email,
+              relationship,
+              move_in_date,
+              property_allocation_date
+            )
+
+            VALUES (
+              $1,
+              'Collected Report Resident',
+              '08033333333',
+              'collected-report@example.test',
+              'owner',
+              '2026-09-01',
+              '2026-08-01'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+          ]
+        )
+
+      const dueTypes =
+        await db.query(`
+          SELECT id
+
+          FROM public.due_types
+
+          ORDER BY id
+
+          LIMIT 2
+        `)
+
+      assert.ok(
+        dueTypes.rows.length >=
+          2
+      )
+
+      const invoiceOne =
+        await first(
+          db,
+          `
+            INSERT INTO public.invoices (
+              house_id,
+              due_type_id,
+              period_label,
+              period_start,
+              period_end,
+              amount,
+              amount_paid,
+              status,
+              due_date
+            )
+
+            VALUES (
+              $1,
+              $2,
+              'Collected Report A',
+              '2026-09-01',
+              '2026-09-30',
+              2000,
+              2000,
+              'paid',
+              '2026-09-30'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+            dueTypes.rows[0].id,
+          ]
+        )
+
+      const invoiceTwo =
+        await first(
+          db,
+          `
+            INSERT INTO public.invoices (
+              house_id,
+              due_type_id,
+              period_label,
+              period_start,
+              period_end,
+              amount,
+              amount_paid,
+              status,
+              due_date
+            )
+
+            VALUES (
+              $1,
+              $2,
+              'Collected Report B',
+              '2026-09-01',
+              '2026-09-30',
+              3000,
+              3000,
+              'paid',
+              '2026-09-30'
+            )
+
+            RETURNING id
+          `,
+          [
+            house.id,
+            dueTypes.rows[1].id,
+          ]
+        )
+
+      const reference =
+        'COLLECTED-REPORT-TRANSACTION-001'
+
+      const inserted =
+        await db.query(
+          `
+            INSERT INTO public.payments (
+              invoice_id,
+              resident_id,
+              amount,
+              paystack_reference,
+              status,
+              paid_at
+            )
+
+            VALUES
+              (
+                $1,
+                $3,
+                2000,
+                $4,
+                'success',
+                '2026-09-30T12:00:00Z'
+              ),
+              (
+                $2,
+                $3,
+                3000,
+                $4,
+                'success',
+                '2026-09-30T12:00:00Z'
+              )
+
+            RETURNING
+              payment_code,
+              transaction_id
+          `,
+          [
+            invoiceOne.id,
+            invoiceTwo.id,
+            resident.id,
+            reference,
+          ]
+        )
+
+      assert.equal(
+        inserted.rows.length,
+        2
+      )
+
+      assert.notEqual(
+        inserted.rows[0]
+          .payment_code,
+        inserted.rows[1]
+          .payment_code
+      )
+
+      assert.equal(
+        inserted.rows[0]
+          .transaction_id,
+        inserted.rows[1]
+          .transaction_id
+      )
+
+      const transaction =
+        await first(
+          db,
+          `
+            SELECT
+              id,
+              payment_code,
+              amount
+
+            FROM public.payment_transactions
+
+            WHERE reference =
+              $1
+          `,
+          [
+            reference,
+          ]
+        )
+
+      assert.equal(
+        transaction.id,
+        inserted.rows[0]
+          .transaction_id
+      )
+
+      assert.match(
+        transaction.payment_code,
+        /^PAY-[0-9]{6}-[0-9]{6,}$/
+      )
+
+      assert.equal(
+        Number(
+          transaction.amount
+        ),
+        5000
+      )
+
+      await db.exec(
+        'SET ROLE authenticated'
+      )
+
+      await db.query(
+        `
+          SELECT set_config(
+            'request.jwt.claim.sub',
+            $1,
+            false
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      const report =
+        await first(
+          db,
+          `
+            SELECT
+              public.admin_collected_payments_page(
+                '2026-09-01',
+                '2026-09-30',
+                50,
+                0
+              ) AS result
+          `
+        )
+
+      assert.equal(
+        Number(
+          report.result.total
+        ),
+        2
+      )
+
+      assert.equal(
+        Number(
+          report
+            .result
+            .total_amount
+        ),
+        5000
+      )
+
+      assert.equal(
+        report
+          .result
+          .rows
+          .length,
+        2
+      )
+
+      const paymentIds =
+        new Set(
+          report
+            .result
+            .rows
+            .map(
+              (
+                row
+              ) =>
+                row.reference
+            )
+        )
+
+      assert.equal(
+        paymentIds.size,
+        1
+      )
+
+      assert.equal(
+        [
+          ...paymentIds,
+        ][0],
+        transaction.payment_code
+      )
+
+      const reportedTotal =
+        report
+          .result
+          .rows
+          .reduce(
+            (
+              total,
+              row
+            ) =>
+              total +
+              Number(
+                row.amount
+              ),
+            0
+          )
+
+      assert.equal(
+        reportedTotal,
+        5000
       )
 
       await db.exec(

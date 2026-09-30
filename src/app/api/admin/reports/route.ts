@@ -59,7 +59,9 @@ function validDate(
 
 type RpcResult = {
   rows?: unknown
+
   total?: unknown
+
   total_amount?: unknown
 }
 
@@ -83,7 +85,8 @@ function parseResult(
     Array.isArray(
       raw.rows
     )
-      ? raw.rows as ReportRow[]
+      ? raw.rows as
+          ReportRow[]
       : []
 
   const total =
@@ -114,7 +117,9 @@ function parseResult(
 
   return {
     rows,
+
     total,
+
     totalAmount,
   }
 }
@@ -310,6 +315,42 @@ export async function GET(
     limit: number,
     offset: number
   ) {
+    if (
+      type ===
+      'collected'
+    ) {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          'admin_collected_payments_page',
+          {
+            p_from:
+              from,
+
+            p_to:
+              to,
+
+            p_limit:
+              limit,
+
+            p_offset:
+              offset,
+          }
+        )
+
+      if (error) {
+        throw new Error(
+          error.message
+        )
+      }
+
+      return parseResult(
+        data
+      )
+    }
+
     const {
       data,
       error,
@@ -382,7 +423,8 @@ export async function GET(
     }
 
     const rows:
-      ReportRow[] = []
+      ReportRow[] =
+      []
 
     let offset =
       0
@@ -467,7 +509,9 @@ export async function GET(
     return NextResponse.json(
       {
         rows,
+
         total,
+
         totalAmount,
       },
       {
