@@ -1,6 +1,8 @@
 'use client'
 
 import {
+  use,
+  useEffect,
   useMemo,
   useState,
 } from 'react'
@@ -8,6 +10,8 @@ import {
 import {
   useRouter,
 } from 'next/navigation'
+
+import Link from 'next/link'
 
 import {
   createClient,
@@ -17,29 +21,51 @@ import {
   friendlyDbError,
 } from '@/lib/friendly-error'
 
+type Frequency =
+  | 'monthly'
+  | 'quarterly'
+  | 'yearly'
+  | 'one-time'
+
+type BillingScope =
+  | 'house'
+  | 'resident'
+
 type FormState = {
   name: string
+
   amount: string
 
   frequency:
-    | 'monthly'
-    | 'quarterly'
-    | 'yearly'
-    | 'one-time'
+    Frequency
 
   billing_scope:
-    | 'house'
-    | 'resident'
+    BillingScope
 
-  active: boolean
+  active:
+    boolean
 
-  auto_generate: boolean
+  auto_generate:
+    boolean
 
   allow_advance_payment:
     boolean
 }
 
-export default function NewDueTypePage() {
+export default function EditDueTypePage({
+  params,
+}: {
+  params: Promise<{
+    id: string
+  }>
+}) {
+  const {
+    id,
+  } =
+    use(
+      params
+    )
+
   const router =
     useRouter()
 
@@ -53,6 +79,13 @@ export default function NewDueTypePage() {
   const [
     loading,
     setLoading,
+  ] = useState(
+    true
+  )
+
+  const [
+    saving,
+    setSaving,
   ] = useState(
     false
   )
@@ -98,66 +131,188 @@ export default function NewDueTypePage() {
     form.frequency ===
       'monthly'
 
+  useEffect(
+    () => {
+      let active =
+        true
+
+      async function load() {
+        setLoading(
+          true
+        )
+
+        setError(
+          null
+        )
+
+        const {
+          data,
+          error:
+            loadError,
+        } =
+          await supabase
+            .from(
+              'due_types'
+            )
+            .select(`
+              id,
+              name,
+              amount,
+              frequency,
+              billing_scope,
+              active,
+              auto_generate,
+              allow_advance_payment
+            `)
+            .eq(
+              'id',
+              id
+            )
+            .single()
+
+        if (
+          !active
+        ) {
+          return
+        }
+
+        if (
+          loadError ||
+          !data
+        ) {
+          setError(
+            'Could not load this due type.'
+          )
+
+          setLoading(
+            false
+          )
+
+          return
+        }
+
+        const frequency =
+          data.frequency as
+            Frequency
+
+        const billingScope =
+          data.billing_scope as
+            BillingScope
+
+        setForm({
+          name:
+            data.name ??
+            '',
+
+          amount:
+            String(
+              data.amount ??
+              ''
+            ),
+
+          frequency,
+
+          billing_scope:
+            billingScope,
+
+          active:
+            Boolean(
+              data.active
+            ),
+
+          auto_generate:
+            Boolean(
+              data.auto_generate
+            ),
+
+          allow_advance_payment:
+            Boolean(
+              data.allow_advance_payment
+            ),
+        })
+
+        setLoading(
+          false
+        )
+      }
+
+      void load()
+
+      return () => {
+        active =
+          false
+      }
+    },
+    [
+      id,
+      supabase,
+    ]
+  )
+
   function updateScope(
     billingScope:
-      FormState['billing_scope']
+      BillingScope
   ) {
     setForm(
       (
         previous
-      ) => ({
-        ...previous,
-
-        billing_scope:
-          billingScope,
-
-        auto_generate:
+      ) => {
+        const supported =
           billingScope ===
             'house' &&
           previous.frequency ===
             'monthly'
-            ? previous.auto_generate
-            : false,
 
-        allow_advance_payment:
-          billingScope ===
-            'house' &&
-          previous.frequency ===
-            'monthly'
-            ? previous.allow_advance_payment
-            : false,
-      })
+        return {
+          ...previous,
+
+          billing_scope:
+            billingScope,
+
+          auto_generate:
+            supported
+              ? previous.auto_generate
+              : false,
+
+          allow_advance_payment:
+            supported
+              ? previous.allow_advance_payment
+              : false,
+        }
+      }
     )
   }
 
   function updateFrequency(
     frequency:
-      FormState['frequency']
+      Frequency
   ) {
     setForm(
       (
         previous
-      ) => ({
-        ...previous,
-
-        frequency,
-
-        auto_generate:
+      ) => {
+        const supported =
           previous.billing_scope ===
             'house' &&
           frequency ===
             'monthly'
-            ? previous.auto_generate
-            : false,
 
-        allow_advance_payment:
-          previous.billing_scope ===
-            'house' &&
-          frequency ===
-            'monthly'
-            ? previous.allow_advance_payment
-            : false,
-      })
+        return {
+          ...previous,
+
+          frequency,
+
+          auto_generate:
+            supported
+              ? previous.auto_generate
+              : false,
+
+          allow_advance_payment:
+            supported
+              ? previous.allow_advance_payment
+              : false,
+        }
+      }
     )
   }
 
@@ -167,7 +322,7 @@ export default function NewDueTypePage() {
   ) {
     event.preventDefault()
 
-    setLoading(
+    setSaving(
       true
     )
 
@@ -220,7 +375,7 @@ export default function NewDueTypePage() {
           .from(
             'due_types'
           )
-          .insert({
+          .update({
             name,
 
             amount,
@@ -240,6 +395,10 @@ export default function NewDueTypePage() {
             allow_advance_payment:
               allowAdvancePayment,
           })
+          .eq(
+            'id',
+            id
+          )
 
       if (
         saveError
@@ -261,10 +420,53 @@ export default function NewDueTypePage() {
         )
       )
     } finally {
-      setLoading(
+      setSaving(
         false
       )
     }
+  }
+
+  if (
+    loading
+  ) {
+    return (
+      <div className="page-wrap max-w-2xl">
+        Loading...
+      </div>
+    )
+  }
+
+  if (
+    error &&
+    !form.name
+  ) {
+    return (
+      <div className="page-wrap max-w-2xl">
+        <span className="eyebrow">
+          Dues & billing
+        </span>
+
+        <h1 className="page-title">
+          Edit due type
+        </h1>
+
+        <div className="form-card mt-6">
+          <p
+            role="alert"
+            className="text-red-600"
+          >
+            {error}
+          </p>
+
+          <Link
+            href="/admin/due-types"
+            className="action secondary inline-block mt-4"
+          >
+            Back to Due Types
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -274,14 +476,15 @@ export default function NewDueTypePage() {
       </span>
 
       <h1 className="page-title">
-        Create a due type
+        Edit due type
       </h1>
 
       <p className="page-lead mb-8">
-        Create a household or
-        resident charge and
-        configure how Zadant
-        should handle it.
+        Update this charge and
+        control how Zadant uses it
+        for future billing.
+        Historical invoices and
+        payments are preserved.
       </p>
 
       <form
@@ -299,7 +502,6 @@ export default function NewDueTypePage() {
             <input
               required
               className="w-full border rounded-lg px-3 py-2"
-              placeholder="e.g. Allocation Levy"
               value={
                 form.name
               }
@@ -331,8 +533,7 @@ export default function NewDueTypePage() {
               required
               className="w-full border rounded-lg px-3 py-2"
               value={
-                form
-                  .billing_scope
+                form.billing_scope
               }
               onChange={(
                 event
@@ -341,7 +542,7 @@ export default function NewDueTypePage() {
                   event
                     .target
                     .value as
-                    FormState['billing_scope']
+                    BillingScope
                 )
               }
             >
@@ -357,12 +558,12 @@ export default function NewDueTypePage() {
             </select>
 
             <p className="text-xs text-gray-500 mt-1">
-              Household charges
-              are issued once per
-              property. Individual
-              charges belong only
-              to the selected
-              resident.
+              Changing the scope
+              affects future
+              billing only.
+              Existing invoices
+              retain their current
+              target.
             </p>
           </div>
 
@@ -417,7 +618,7 @@ export default function NewDueTypePage() {
                   event
                     .target
                     .value as
-                    FormState['frequency']
+                    Frequency
                 )
               }
             >
@@ -448,12 +649,13 @@ export default function NewDueTypePage() {
           </h2>
 
           <p className="mt-1 text-sm text-gray-600">
-            Inactive due types
-            remain in historical
-            invoices and reports
-            but are excluded from
-            new automatic billing
+            Deactivating a due
+            type prevents it from
+            participating in new
+            automatic generation
             and advance payment.
+            Existing accounting
+            history is untouched.
           </p>
 
           <label className="mt-4 flex items-start gap-3 rounded-lg border p-4 cursor-pointer">
@@ -487,7 +689,7 @@ export default function NewDueTypePage() {
               </strong>
 
               <span className="text-sm text-gray-600">
-                Make this due type
+                Keep this charge
                 available for
                 current estate
                 billing.
@@ -504,21 +706,21 @@ export default function NewDueTypePage() {
           </h2>
 
           <p className="mt-1 text-sm text-gray-600">
-            These capabilities
+            Automatic generation
+            and advance payment
             are currently
-            available only for
+            supported only for
             monthly household
             charges.
           </p>
 
           {!supportsCapabilities && (
             <div className="mt-4 rounded-lg border bg-gray-50 p-4 text-sm text-gray-600">
-              Automatic monthly
-              generation and
-              advance payment are
-              unavailable for the
-              selected billing
-              scope or frequency.
+              These capabilities
+              have been disabled
+              because the selected
+              scope or frequency
+              is not supported.
             </div>
           )}
 
@@ -568,13 +770,12 @@ export default function NewDueTypePage() {
                 </strong>
 
                 <span className="text-sm text-gray-600">
-                  Zadant&apos;s
-                  scheduled billing
-                  process will
-                  create this
-                  charge for every
-                  household each
-                  month.
+                  Include this due
+                  type in Zadant&apos;s
+                  automatic
+                  monthly
+                  household
+                  billing.
                 </span>
               </span>
             </label>
@@ -623,38 +824,16 @@ export default function NewDueTypePage() {
                 </strong>
 
                 <span className="text-sm text-gray-600">
-                  The household
-                  billing payer
-                  can pay future
-                  months for this
-                  charge from the
-                  resident portal.
+                  Allow the
+                  household payer
+                  to select and pay
+                  future months for
+                  this charge.
                 </span>
               </span>
             </label>
           </div>
         </section>
-
-        {form.billing_scope ===
-          'resident' && (
-          <div className="rounded-lg border bg-gray-50 p-4 text-sm">
-            <strong>
-              Individual
-              Resident billing
-            </strong>
-
-            <p className="mt-1 text-gray-600">
-              When this charge is
-              generated for a
-              resident, Zadant
-              splits the selected
-              date range according
-              to its frequency.
-              Each period receives
-              its own invoice.
-            </p>
-          </div>
-        )}
 
         {error && (
           <p
@@ -665,17 +844,26 @@ export default function NewDueTypePage() {
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={
-            loading
-          }
-          className="action disabled:opacity-50"
-        >
-          {loading
-            ? 'Saving...'
-            : 'Save Due Type'}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="submit"
+            disabled={
+              saving
+            }
+            className="action disabled:opacity-50"
+          >
+            {saving
+              ? 'Saving...'
+              : 'Save Changes'}
+          </button>
+
+          <Link
+            href="/admin/due-types"
+            className="action secondary"
+          >
+            Cancel
+          </Link>
+        </div>
       </form>
     </div>
   )
