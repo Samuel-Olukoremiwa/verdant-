@@ -290,10 +290,10 @@ BEGIN
   END IF;
 
   /*
-   * These checks provide friendly messages.
+   * Friendly checks before insert.
    *
-   * The existing unique indexes remain the authoritative
-   * concurrency protection if two requests race.
+   * The existing unique indexes remain the final concurrency
+   * protection if two requests race.
    */
   IF EXISTS (
     SELECT
@@ -451,16 +451,29 @@ END;
 $function$;
 
 
-REVOKE ALL
+REVOKE EXECUTE
 ON FUNCTION
   public.create_estate_resident_record(
     uuid,
     jsonb
   )
-FROM
-  PUBLIC,
-  anon,
-  authenticated;
+FROM PUBLIC;
+
+REVOKE EXECUTE
+ON FUNCTION
+  public.create_estate_resident_record(
+    uuid,
+    jsonb
+  )
+FROM anon;
+
+REVOKE EXECUTE
+ON FUNCTION
+  public.create_estate_resident_record(
+    uuid,
+    jsonb
+  )
+FROM authenticated;
 
 GRANT EXECUTE
 ON FUNCTION
@@ -468,8 +481,7 @@ ON FUNCTION
     uuid,
     jsonb
   )
-TO
-  service_role;
+TO service_role;
 
 
 -- ============================================================
@@ -638,8 +650,14 @@ END;
 $function$;
 
 
--- Existing permissions for the public admin RPC are preserved
--- by CREATE OR REPLACE, but make the intended access explicit.
+REVOKE EXECUTE
+ON FUNCTION
+  public.add_estate_resident(
+    uuid,
+    jsonb,
+    jsonb
+  )
+FROM PUBLIC;
 
 REVOKE EXECUTE
 ON FUNCTION
@@ -648,9 +666,7 @@ ON FUNCTION
     jsonb,
     jsonb
   )
-FROM
-  PUBLIC,
-  anon;
+FROM anon;
 
 GRANT EXECUTE
 ON FUNCTION
@@ -659,9 +675,16 @@ ON FUNCTION
     jsonb,
     jsonb
   )
-TO
-  authenticated,
-  service_role;
+TO authenticated;
+
+GRANT EXECUTE
+ON FUNCTION
+  public.add_estate_resident(
+    uuid,
+    jsonb,
+    jsonb
+  )
+TO service_role;
 
 
 -- ============================================================
@@ -716,7 +739,7 @@ END;
 $function$;
 
 
-REVOKE ALL
+REVOKE EXECUTE
 ON FUNCTION
   public.provision_registration_resident(
     uuid,
@@ -724,10 +747,27 @@ ON FUNCTION
     text,
     jsonb
   )
-FROM
-  PUBLIC,
-  anon,
-  authenticated;
+FROM PUBLIC;
+
+REVOKE EXECUTE
+ON FUNCTION
+  public.provision_registration_resident(
+    uuid,
+    text,
+    text,
+    jsonb
+  )
+FROM anon;
+
+REVOKE EXECUTE
+ON FUNCTION
+  public.provision_registration_resident(
+    uuid,
+    text,
+    text,
+    jsonb
+  )
+FROM authenticated;
 
 GRANT EXECUTE
 ON FUNCTION
@@ -737,8 +777,7 @@ ON FUNCTION
     text,
     jsonb
   )
-TO
-  service_role;
+TO service_role;
 
 
 COMMIT;
