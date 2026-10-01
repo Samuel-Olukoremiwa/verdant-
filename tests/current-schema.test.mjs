@@ -84,6 +84,8 @@ const sqlFiles = [
   'migrations/20260930211856_restrict_single_house_invoice_helper.sql',
 
   'migrations/20261001004849_optimize_estate_wide_invoice_generation.sql',
+
+  'migrations/20261001011319_centralize_resident_creation.sql',
 ]
 
 function sql(
@@ -166,7 +168,39 @@ async function createDatabase() {
     )
   }
 
-  await db.exec(`
+    await db.exec(`
+    /*
+     * Match Supabase's service-role database privileges.
+     *
+     * BYPASSRLS bypasses row-level security, but PostgreSQL
+     * table privileges are still required separately.
+     *
+     * Production Supabase grants its service role access to
+     * application tables. PGlite does not create those grants
+     * automatically, so the test fixture must model them.
+     */
+    GRANT
+      SELECT,
+      INSERT,
+      UPDATE,
+      DELETE
+
+    ON ALL TABLES
+    IN SCHEMA public
+
+    TO service_role;
+
+
+    GRANT
+      USAGE,
+      SELECT
+
+    ON ALL SEQUENCES
+    IN SCHEMA public
+
+    TO service_role;
+
+
     GRANT SELECT
     ON public.residents
     TO authenticated;
@@ -4243,5 +4277,523 @@ test(
     } finally {
       await db.close()
     }
+  }
+)
+
+test(
+  'resident creation is centralized behind service-only database helpers',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const helperPrivileges =
+        await first(
+          db,
+          `
+            SELECT
+              has_function_privilege(
+                'anon',
+                p.oid,
+                'EXECUTE'
+              ) AS anon_execute,
+
+              has_function_privilege(
+                'authenticated',
+                p.oid,
+                'EXECUTE'
+              ) AS authenticated_execute,
+
+              has_function_privilege(
+                'service_role',
+                p.oid,
+                'EXECUTE'
+              ) AS service_execute
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'create_estate_resident_record'
+
+              AND
+                pg_get_function_identity_arguments(
+                  p.oid
+                )
+                =
+                'p_house_id uuid, p_resident jsonb'
+          `
+        )
+
+      assert.ok(
+        helperPrivileges
+      )
+
+      assert.equal(
+        helperPrivileges
+          .anon_execute,
+        false
+      )
+
+      assert.equal(
+        helperPrivileges
+          .authenticated_execute,
+        false
+      )
+
+      assert.equal(
+        helperPrivileges
+          .service_execute,
+        true
+      )
+
+      const provisionPrivileges =
+        await first(
+          db,
+          `
+            SELECT
+              has_function_privilege(
+                'anon',
+                p.oid,
+                'EXECUTE'
+              ) AS anon_execute,
+
+              has_function_privilege(
+                'authenticated',
+                p.oid,
+                'EXECUTE'
+              ) AS authenticated_execute,
+
+              has_function_privilege(
+                'service_role',
+                p.oid,
+                'EXECUTE'
+              ) AS service_execute
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'provision_registration_resident'
+
+              AND
+                pg_get_function_identity_arguments(
+                  p.oid
+                )
+                =
+                'p_street_id uuid, p_house_number text, p_house_type text, p_resident jsonb'
+          `
+        )
+
+      assert.ok(
+        provisionPrivileges
+      )
+
+      assert.equal(
+        provisionPrivileges
+          .anon_execute,
+        false
+      )
+
+      assert.equal(
+        provisionPrivileges
+          .authenticated_execute,
+        false
+      )
+
+      assert.equal(
+        provisionPrivileges
+          .service_execute,
+        true
+      )
+
+      const addDefinition =
+        await first(
+          db,
+          `
+            SELECT
+              pg_get_functiondef(
+                p.oid
+              ) AS definition
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'add_estate_resident'
+
+              AND
+                pg_get_function_identity_arguments(
+                  p.oid
+                )
+                =
+                'p_house_id uuid, p_house jsonb, p_resident jsonb'
+          `
+        )
+
+      assert.ok(
+        addDefinition
+      )
+
+      assert.match(
+        addDefinition.definition,
+        /create_estate_resident_record\s*\(/i
+      )
+
+      assert.equal(
+        /INSERT\s+INTO\s+public\.residents/i.test(
+          addDefinition.definition
+        ),
+        false
+      )
+
+      const provisionDefinition =
+        await first(
+          db,
+          `
+            SELECT
+              pg_get_functiondef(
+                p.oid
+              ) AS definition
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'provision_registration_resident'
+          `
+        )
+
+      assert.ok(
+        provisionDefinition
+      )
+
+      assert.match(
+        provisionDefinition.definition,
+        /resolve_registration_house\s*\(/i
+      )
+
+      assert.match(
+        provisionDefinition.definition,
+        /create_estate_resident_record\s*\(/i
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'registration provisioning reuses shared resident rules atomically',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Central Resident Test Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      await db.exec(
+        'SET ROLE service_role'
+      )
+
+      const created =
+        await first(
+          db,
+          `
+            SELECT
+              public.provision_registration_resident(
+                $1::uuid,
+                '11',
+                '3-bedroom duplex',
+                $2::jsonb
+              ) AS result
+          `,
+          [
+            street.id,
+
+            JSON.stringify({
+              full_name:
+                'Central Owner',
+
+              phone:
+                '08012345678',
+
+              email:
+                'central-owner@example.test',
+
+              relationship:
+                'owner',
+
+              block_number:
+                null,
+
+              flat_number:
+                null,
+
+              vehicle_plate_numbers: [
+                'ABC-123-XY',
+              ],
+
+              emergency_contact_name:
+                'Emergency Contact',
+
+              emergency_contact_phone:
+                '08087654321',
+
+              move_in_date:
+                '2026-09-01',
+
+              property_allocation_date:
+                '2026-08-01',
+            }),
+          ]
+        )
+
+      assert.ok(
+        created.result
+          .house_id
+      )
+
+      assert.ok(
+        created.result
+          .resident_id
+      )
+
+      /*
+       * The shared helper must also enforce the one-active-owner
+       * rule for registration approval.
+       */
+      await assert.rejects(
+        first(
+          db,
+          `
+            SELECT
+              public.provision_registration_resident(
+                $1::uuid,
+                '11',
+                '3-bedroom duplex',
+                $2::jsonb
+              )
+          `,
+          [
+            street.id,
+
+            JSON.stringify({
+              full_name:
+                'Second Owner',
+
+              phone:
+                '08022222222',
+
+              email:
+                'second-owner@example.test',
+
+              relationship:
+                'owner',
+
+              vehicle_plate_numbers:
+                [],
+
+              move_in_date:
+                '2026-09-01',
+
+              property_allocation_date:
+                '2026-08-01',
+            }),
+          ]
+        ),
+        /already has an active Home Owner/
+      )
+
+      /*
+       * A duplicate-email failure on a brand-new property must
+       * roll the new house back because house resolution and
+       * resident creation share one DB transaction.
+       */
+      await assert.rejects(
+        first(
+          db,
+          `
+            SELECT
+              public.provision_registration_resident(
+                $1::uuid,
+                '12',
+                '3-bedroom duplex',
+                $2::jsonb
+              )
+          `,
+          [
+            street.id,
+
+            JSON.stringify({
+              full_name:
+                'Duplicate Email Resident',
+
+              phone:
+                '08033333333',
+
+              email:
+                'central-owner@example.test',
+
+              relationship:
+                'tenant',
+
+              vehicle_plate_numbers:
+                [],
+
+              move_in_date:
+                '2026-09-01',
+
+              property_allocation_date:
+                '2026-08-01',
+            }),
+          ]
+        ),
+        /already uses this email address/
+      )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      const residents =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int
+                AS n
+
+            FROM public.residents
+
+            WHERE email =
+              'central-owner@example.test'
+          `
+        )
+
+      assert.equal(
+        residents.n,
+        1
+      )
+
+      const rolledBackHouse =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int
+                AS n
+
+            FROM public.houses
+
+            WHERE
+              street_id =
+                $1::uuid
+
+              AND public.canonical_house_number(
+                house_number
+              ) =
+                '12'
+          `,
+          [
+            street.id,
+          ]
+        )
+
+      assert.equal(
+        rolledBackHouse.n,
+        0
+      )
+    } finally {
+      await db.exec(
+        'RESET ROLE'
+      ).catch(
+        () => {}
+      )
+
+      await db.close()
+    }
+  }
+)
+
+test(
+  'registration approval delegates resident insertion to the centralized provisioning RPC',
+  () => {
+    const source =
+      fs.readFileSync(
+        path.join(
+          root,
+          'src',
+          'app',
+          'api',
+          'admin',
+          'registrations',
+          '[id]',
+          'approve',
+          'route.ts'
+        ),
+        'utf8'
+      )
+
+    assert.match(
+      source,
+      /\.rpc\(\s*['"]provision_registration_resident['"]/s
+    )
+
+    assert.equal(
+      /\.from\(\s*['"]residents['"]\s*\)\s*\.insert\(/s.test(
+        source
+      ),
+      false
+    )
+
+    assert.equal(
+      source.includes(
+        'existingOwner'
+      ),
+      false
+    )
   }
 )

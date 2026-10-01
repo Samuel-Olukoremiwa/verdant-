@@ -97,9 +97,13 @@ export async function POST(
       user,
     },
   } =
-    await supabase.auth.getUser()
+    await supabase
+      .auth
+      .getUser()
 
-  if (!user) {
+  if (
+    !user
+  ) {
     return NextResponse.json(
       {
         error:
@@ -275,12 +279,6 @@ export async function POST(
         authUserId,
       })
 
-    /*
-     * Only release immediately when cleanup was
-     * confirmed. An incomplete rollback keeps the
-     * claim temporarily, reducing the chance that
-     * an immediate retry creates another account.
-     */
     if (
       rollback.ok
     ) {
@@ -327,11 +325,8 @@ export async function POST(
   }
 
   /*
-   * Retry safety.
-   *
-   * A browser/server retry after a successful approval
-   * must return the existing account rather than create
-   * another resident or Auth user.
+   * A retry after a completed approval must reuse the existing
+   * resident/auth account rather than provision another one.
    */
   if (
     reg.status ===
@@ -410,7 +405,8 @@ export async function POST(
           id,
 
         phone:
-          existingResident.phone ??
+          existingResident
+            .phone ??
           reg.phone ??
           '',
       })
@@ -501,12 +497,14 @@ export async function POST(
       })
       .safeParse({
         move_in_date:
-          input.data
+          input
+            .data
             .move_in_date ??
           reg.move_in_date,
 
         property_allocation_date:
-          input.data
+          input
+            .data
             .property_allocation_date ??
           reg
             .property_allocation_date,
@@ -545,7 +543,7 @@ export async function POST(
   const email =
     String(
       reg.email ??
-        ''
+      ''
     )
       .trim()
       .toLowerCase()
@@ -577,7 +575,7 @@ export async function POST(
         ) =>
           String(
             value ??
-              ''
+            ''
           ).trim()
       )
       .filter(
@@ -603,73 +601,8 @@ export async function POST(
   }
 
   /*
-   * This lookup has no side effects, so it can safely
-   * happen before claiming the registration.
-   */
-  const {
-    data:
-      duplicateResident,
-
-    error:
-      duplicateLookupError,
-  } =
-    await service
-      .from(
-        'residents'
-      )
-      .select(
-        'id, full_name, auth_user_id'
-      )
-      .eq(
-        'is_active',
-        true
-      )
-      .ilike(
-        'email',
-        email
-      )
-      .limit(
-        1
-      )
-      .maybeSingle()
-
-  if (
-    duplicateLookupError
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          'Could not verify whether this resident already exists.',
-      },
-      {
-        status:
-          500,
-      }
-    )
-  }
-
-  if (
-    duplicateResident
-  ) {
-    return NextResponse.json(
-      {
-        error:
-          `An active resident already uses this email address${
-            duplicateResident.full_name
-              ? `: ${duplicateResident.full_name}`
-              : ''
-          }.`,
-      },
-      {
-        status:
-          409,
-      }
-    )
-  }
-
-  /*
-   * Atomically claim this pending registration before
-   * any provisioning side effects occur.
+   * Claim the registration before any provisioning side
+   * effects occur.
    */
   const {
     data:
@@ -813,18 +746,27 @@ export async function POST(
   }
 
   /*
-   * Resolve the canonical physical property only after
-   * the approval claim has been secured.
+   * House resolution/reuse and resident creation happen inside
+   * one DB transaction.
+   *
+   * The shared helper now owns:
+   *
+   *   - resident field validation
+   *   - active-email uniqueness
+   *   - one-active-owner enforcement
+   *   - date requirements
+   *   - QR generation
+   *   - resident insertion
    */
   const {
     data:
-      houseId,
+      provisionResult,
 
     error:
-      houseError,
+      provisionError,
   } =
     await service.rpc(
-      'resolve_registration_house',
+      'provision_registration_resident',
       {
         p_street_id:
           reg.street_id,
@@ -834,23 +776,70 @@ export async function POST(
 
         p_house_type:
           reg.house_type,
+
+        p_resident: {
+          full_name:
+            fullName,
+
+          phone:
+            reg.phone,
+
+          email,
+
+          relationship:
+            reg.relationship,
+
+          block_number:
+            reg.block_number ??
+            null,
+
+          flat_number:
+            reg.flat_number ??
+            null,
+
+          vehicle_plate_numbers:
+            reg
+              .vehicle_plate_numbers ??
+            [],
+
+          emergency_contact_name:
+            reg
+              .emergency_contact_name ??
+            null,
+
+          emergency_contact_phone:
+            reg
+              .emergency_contact_phone ??
+            null,
+
+          move_in_date:
+            dates
+              .data
+              .move_in_date,
+
+          property_allocation_date:
+            dates
+              .data
+              .property_allocation_date,
+        },
       }
     )
 
   if (
-    houseError ||
-    typeof houseId !==
-      'string'
+    provisionError
   ) {
     await releaseApprovalClaim()
 
     const rawMessage =
-      houseError?.message ??
+      provisionError.message ??
       ''
 
     if (
       rawMessage.includes(
-        'resolve_registration_house'
+        'provision_registration_resident'
+      ) ||
+      rawMessage.includes(
+        'create_estate_resident_record'
       ) ||
       rawMessage.includes(
         'schema cache'
@@ -859,7 +848,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            'The registration database migration has not been applied yet. Run the database migrations in Supabase, then try again.',
+            'The resident creation migration has not been applied yet. Run the database migrations in Supabase, then try again.',
         },
         {
           status:
@@ -868,179 +857,100 @@ export async function POST(
       )
     }
 
+    const conflict =
+      provisionError.code ===
+        '23505' ||
+      rawMessage.includes(
+        'already uses this email address'
+      ) ||
+      rawMessage.includes(
+        'already has an active Home Owner'
+      )
+
+    const validation =
+      [
+        'Select a street',
+        'Street not found',
+        'Select a valid house number',
+        'House number must be between 1 and 50',
+        'Household not found',
+        'Enter the resident name',
+        'Phone number must contain only numbers',
+        'Enter a valid email address',
+        'Select a resident status',
+        'Block number must be between 1 and 10',
+        'Flat number must be between 1 and 10',
+        'Enter a valid emergency contact phone number',
+        'Move-in date and property allocation date are required',
+        'Vehicle plate numbers must be an array',
+      ].some(
+        (
+          message
+        ) =>
+          rawMessage.includes(
+            message
+          )
+      )
+
     return NextResponse.json(
       {
         error:
           rawMessage ||
-          'Could not resolve the property',
+          'Could not create resident',
       },
       {
         status:
-          400,
+          conflict
+            ? 409
+            : validation
+              ? 400
+              : 500,
       }
     )
   }
 
-  /*
-   * Only one active Home Owner may exist for a house.
-   */
-  if (
-    reg.relationship ===
-    'owner'
-  ) {
-    const {
-      data:
-        existingOwner,
+  const provision =
+    (
+      provisionResult ??
+      null
+    ) as
+      | {
+          house_id?:
+            unknown
 
-      error:
-        ownerLookupError,
-    } =
-      await service
-        .from(
-          'residents'
-        )
-        .select(
-          'id, full_name'
-        )
-        .eq(
-          'house_id',
-          houseId
-        )
-        .eq(
-          'relationship',
-          'owner'
-        )
-        .eq(
-          'is_active',
-          true
-        )
-        .limit(
-          1
-        )
-        .maybeSingle()
-
-    if (
-      ownerLookupError
-    ) {
-      await releaseApprovalClaim()
-
-      return NextResponse.json(
-        {
-          error:
-            'Could not verify the existing Home Owner for this property.',
-        },
-        {
-          status:
-            500,
+          resident_id?:
+            unknown
         }
-      )
-    }
+      | null
 
-    if (
-      existingOwner
-    ) {
-      await releaseApprovalClaim()
+  const houseId =
+    typeof provision
+      ?.house_id ===
+    'string'
+      ? provision.house_id
+      : null
 
-      return NextResponse.json(
-        {
-          error:
-            `House ${reg.house_number} already has an active Home Owner: ${existingOwner.full_name}. Change this applicant to Tenant or Family Member if appropriate.`,
-        },
-        {
-          status:
-            409,
-        }
-      )
-    }
-  }
-
-  const qrValue =
-    `RES-${crypto.randomUUID()}`
-
-  /*
-   * Create the estate resident first.
-   * auth_user_id remains NULL until the Auth invite
-   * has been verified.
-   */
-  const {
-    data:
-      resident,
-
-    error:
-      residentError,
-  } =
-    await service
-      .from(
-        'residents'
-      )
-      .insert({
-        house_id:
-          houseId,
-
-        full_name:
-          fullName,
-
-        phone:
-          reg.phone,
-
-        email,
-
-        relationship:
-          reg.relationship,
-
-        block_number:
-          reg.block_number ??
-          null,
-
-        flat_number:
-          reg.flat_number ??
-          null,
-
-        vehicle_plate_numbers:
-          reg
-            .vehicle_plate_numbers ??
-          null,
-
-        emergency_contact_name:
-          reg
-            .emergency_contact_name ??
-          null,
-
-        emergency_contact_phone:
-          reg
-            .emergency_contact_phone ??
-          null,
-
-        ...dates.data,
-
-        qr_code_value:
-          qrValue,
-      })
-      .select(
-        'id, email, full_name'
-      )
-      .single()
+  const residentId =
+    typeof provision
+      ?.resident_id ===
+    'string'
+      ? provision.resident_id
+      : null
 
   if (
-    residentError ||
-    !resident
+    !houseId ||
+    !residentId
   ) {
     await releaseApprovalClaim()
 
     return NextResponse.json(
       {
         error:
-          residentError
-            ?.message ??
-          'Could not create resident',
+          'The resident account could not be created safely.',
       },
       {
         status:
-          residentError
-            ?.code ===
-          '23505'
-            ? 409
-            : 500,
+          500,
       }
     )
   }
@@ -1058,8 +968,7 @@ export async function POST(
   ) {
     const rollback =
       await releaseAfterSafeRollback({
-        residentId:
-          resident.id,
+        residentId,
       })
 
     return NextResponse.json(
@@ -1082,8 +991,8 @@ export async function POST(
   }
 
   /*
-   * A newly approved resident uses the INVITE flow.
-   * New accounts must go to /set-password.
+   * Newly approved residents use the invite flow and set their
+   * own password.
    */
   const {
     data:
@@ -1109,8 +1018,7 @@ export async function POST(
   ) {
     const rollback =
       await releaseAfterSafeRollback({
-        residentId:
-          resident.id,
+        residentId,
       })
 
     return NextResponse.json(
@@ -1139,9 +1047,6 @@ export async function POST(
   const authUserId =
     invited.user.id
 
-  /*
-   * Account-isolation safety.
-   */
   const invitedEmail =
     invited.user.email
       ?.trim()
@@ -1154,9 +1059,7 @@ export async function POST(
   ) {
     const rollback =
       await releaseAfterSafeRollback({
-        residentId:
-          resident.id,
-
+        residentId,
         authUserId,
       })
 
@@ -1180,11 +1083,8 @@ export async function POST(
   }
 
   /*
-   * Link only the resident created by this request to
-   * the exact Auth user returned by Supabase.
-   *
-   * Returning the updated row prevents a zero-row
-   * conditional update from being mistaken for success.
+   * Link only the resident created by this approval to the
+   * exact Auth account returned by Supabase.
    */
   const {
     data:
@@ -1203,7 +1103,7 @@ export async function POST(
       })
       .eq(
         'id',
-        resident.id
+        residentId
       )
       .is(
         'auth_user_id',
@@ -1223,9 +1123,7 @@ export async function POST(
   ) {
     const rollback =
       await releaseAfterSafeRollback({
-        residentId:
-          resident.id,
-
+        residentId,
         authUserId,
       })
 
@@ -1249,7 +1147,7 @@ export async function POST(
   }
 
   /*
-   * Confirm the relationship with a separate read.
+   * Confirm the linked identity with a separate read.
    */
   const {
     data:
@@ -1267,7 +1165,7 @@ export async function POST(
       )
       .eq(
         'id',
-        resident.id
+        residentId
       )
       .single()
 
@@ -1284,9 +1182,7 @@ export async function POST(
   ) {
     const rollback =
       await releaseAfterSafeRollback({
-        residentId:
-          resident.id,
-
+        residentId,
         authUserId,
       })
 
@@ -1314,10 +1210,8 @@ export async function POST(
       .toISOString()
 
   /*
-   * The final approval is conditional on:
-   *
-   * 1. the registration still being pending, and
-   * 2. this request still owning the approval claim.
+   * Final approval is conditional on this request still owning
+   * the approval claim.
    */
   const {
     data:
@@ -1343,7 +1237,7 @@ export async function POST(
           reviewedAt,
 
         created_resident_id:
-          resident.id,
+          residentId,
       })
       .eq(
         'id',
@@ -1369,13 +1263,11 @@ export async function POST(
       'approved' &&
     approvalResult
       .created_resident_id ===
-      resident.id
+      residentId
 
   /*
-   * A transport/PostgREST failure does not necessarily
-   * prove the UPDATE failed in PostgreSQL.
-   *
-   * Verify before deleting anything.
+   * A network/PostgREST error does not prove the UPDATE failed.
+   * Verify the committed state before deleting anything.
    */
   if (
     !approvalConfirmed
@@ -1407,19 +1299,13 @@ export async function POST(
         'approved' &&
       currentRegistration
         .created_resident_id ===
-        resident.id
+        residentId
     ) {
       approvalConfirmed =
         true
     } else if (
       verificationError
     ) {
-      /*
-       * State is genuinely uncertain.
-       *
-       * Never delete the account here because the
-       * approval may already have committed.
-       */
       return NextResponse.json(
         {
           error:
@@ -1428,8 +1314,7 @@ export async function POST(
           approvalState:
             'unknown',
 
-          residentId:
-            resident.id,
+          residentId,
 
           authUserId,
         },
@@ -1444,14 +1329,11 @@ export async function POST(
         'approved'
     ) {
       /*
-       * Another approval won with another resident.
-       * Remove this request's duplicate account.
+       * Another approval completed first with another resident.
        */
       const rollback =
         await rollbackProvisionedAccount({
-          residentId:
-            resident.id,
-
+          residentId,
           authUserId,
         })
 
@@ -1474,14 +1356,12 @@ export async function POST(
       )
     } else {
       /*
-       * PostgreSQL confirms our approval did not commit.
-       * Rollback is therefore safe.
+       * PostgreSQL confirms our approval did not commit, so
+       * cleanup is safe.
        */
       const rollback =
         await rollbackProvisionedAccount({
-          residentId:
-            resident.id,
-
+          residentId,
           authUserId,
         })
 
@@ -1527,8 +1407,8 @@ export async function POST(
   }
 
   /*
-   * The status trigger clears the approval claim
-   * automatically once approval succeeds.
+   * The existing status trigger clears the approval claim once
+   * approval succeeds.
    */
   const sms =
     await queueRegistrationSms({
