@@ -88,6 +88,8 @@ const sqlFiles = [
   'migrations/20261001011319_centralize_resident_creation.sql',
 
   'migrations/20261001014954_atomic_registration_finalization.sql',
+
+  'migrations/20261001020015_safe_resident_login_linking.sql',
 ]
 
 function sql(
@@ -5578,6 +5580,331 @@ test(
         source
       ),
       false
+    )
+  }
+)
+
+test(
+  'resident Auth linking is service-only and security-invoker',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const privileges =
+        await first(
+          db,
+          `
+            SELECT
+              p.prosecdef
+                AS security_definer,
+
+              has_function_privilege(
+                'anon',
+                p.oid,
+                'EXECUTE'
+              ) AS anon_execute,
+
+              has_function_privilege(
+                'authenticated',
+                p.oid,
+                'EXECUTE'
+              ) AS authenticated_execute,
+
+              has_function_privilege(
+                'service_role',
+                p.oid,
+                'EXECUTE'
+              ) AS service_execute
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'link_resident_auth_user'
+
+              AND
+                pg_get_function_identity_arguments(
+                  p.oid
+                )
+                =
+                'p_resident uuid, p_auth_user uuid, p_email text'
+          `
+        )
+
+      assert.ok(
+        privileges
+      )
+
+      assert.equal(
+        privileges
+          .security_definer,
+        false
+      )
+
+      assert.equal(
+        privileges
+          .anon_execute,
+        false
+      )
+
+      assert.equal(
+        privileges
+          .authenticated_execute,
+        false
+      )
+
+      assert.equal(
+        privileges
+          .service_execute,
+        true
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'resident Auth linking is atomic and idempotent',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const authUserId =
+        '73000000-0000-4000-8000-000000000001'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES (
+            $1::uuid,
+            'login-link@example.test'
+          )
+        `,
+        [
+          authUserId,
+        ]
+      )
+
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Login Link Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      await db.exec(
+        'SET ROLE service_role'
+      )
+
+      const provision =
+        await first(
+          db,
+          `
+            SELECT
+              public.provision_registration_resident(
+                $1::uuid,
+                '31',
+                '3-bedroom duplex',
+                $2::jsonb
+              ) AS result
+          `,
+          [
+            street.id,
+
+            JSON.stringify({
+              full_name:
+                'Login Link Resident',
+
+              phone:
+                '08034567890',
+
+              email:
+                'login-link@example.test',
+
+              relationship:
+                'tenant',
+
+              vehicle_plate_numbers:
+                [],
+
+              move_in_date:
+                '2026-10-01',
+
+              property_allocation_date:
+                '2026-09-01',
+            }),
+          ]
+        )
+
+      const residentId =
+        provision
+          .result
+          .resident_id
+
+      const linked =
+        await first(
+          db,
+          `
+            SELECT
+              public.link_resident_auth_user(
+                $1::uuid,
+                $2::uuid,
+                'login-link@example.test'
+              ) AS result
+          `,
+          [
+            residentId,
+            authUserId,
+          ]
+        )
+
+      assert.equal(
+        linked
+          .result
+          .linked,
+        true
+      )
+
+      assert.equal(
+        linked
+          .result
+          .already_linked,
+        false
+      )
+
+      /*
+       * Exact retry must succeed without changing identity.
+       */
+      const retried =
+        await first(
+          db,
+          `
+            SELECT
+              public.link_resident_auth_user(
+                $1::uuid,
+                $2::uuid,
+                'login-link@example.test'
+              ) AS result
+          `,
+          [
+            residentId,
+            authUserId,
+          ]
+        )
+
+      assert.equal(
+        retried
+          .result
+          .linked,
+        true
+      )
+
+      assert.equal(
+        retried
+          .result
+          .already_linked,
+        true
+      )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      const resident =
+        await first(
+          db,
+          `
+            SELECT
+              auth_user_id
+
+            FROM public.residents
+
+            WHERE id =
+              $1::uuid
+          `,
+          [
+            residentId,
+          ]
+        )
+
+      assert.equal(
+        resident.auth_user_id,
+        authUserId
+      )
+    } finally {
+      await db.exec(
+        'RESET ROLE'
+      ).catch(
+        () => {}
+      )
+
+      await db.close()
+    }
+  }
+)
+
+test(
+  'create-login route uses the safe resident Auth-link RPC',
+  () => {
+    const source =
+      fs.readFileSync(
+        path.join(
+          root,
+          'src',
+          'app',
+          'api',
+          'admin',
+          'residents',
+          '[id]',
+          'create-login',
+          'route.ts'
+        ),
+        'utf8'
+      )
+
+    assert.match(
+      source,
+      /\.rpc\(\s*['"]link_resident_auth_user['"]/s
+    )
+
+    assert.equal(
+      /\.from\(\s*['"]residents['"]\s*\)\s*\.update\(/s.test(
+        source
+      ),
+      false
+    )
+
+    assert.match(
+      source,
+      /invited\.user\.email/
+    )
+
+    assert.match(
+      source,
+      /\.deleteUser\(/s
     )
   }
 )
