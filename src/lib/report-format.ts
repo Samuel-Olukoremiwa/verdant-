@@ -55,11 +55,19 @@ export function periodRange(
       {
         timeZone:
           'Africa/Lagos',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
+
+        year:
+          'numeric',
+
+        month:
+          '2-digit',
+
+        day:
+          '2-digit',
       }
-    ).format(today)
+    ).format(
+      today
+    )
 
   const year =
     Number(
@@ -75,19 +83,22 @@ export function periodRange(
         5,
         7
       )
-    ) - 1
+    ) -
+    1
 
   let startMonth =
     month
 
   let endMonth =
-    month + 1
+    month +
+    1
 
   if (
     preset ===
     'last-month'
   ) {
     startMonth--
+
     endMonth--
   }
 
@@ -97,19 +108,25 @@ export function periodRange(
   ) {
     startMonth =
       Math.floor(
-        month / 3
-      ) * 3
+        month /
+          3
+      ) *
+      3
 
     endMonth =
-      startMonth + 3
+      startMonth +
+      3
   }
 
   if (
     preset ===
     'year'
   ) {
-    startMonth = 0
-    endMonth = 12
+    startMonth =
+      0
+
+    endMonth =
+      12
   }
 
   if (
@@ -117,6 +134,7 @@ export function periodRange(
     'next-month'
   ) {
     startMonth++
+
     endMonth++
   }
 
@@ -125,7 +143,9 @@ export function periodRange(
     'next-quarter'
   ) {
     startMonth++
-    endMonth += 3
+
+    endMonth +=
+      3
   }
 
   return {
@@ -160,7 +180,8 @@ export function periodRange(
 }
 
 export function reportColumns(
-  type: ReportType
+  type:
+    ReportType
 ) {
   if (
     type ===
@@ -168,17 +189,25 @@ export function reportColumns(
   ) {
     return [
       {
-        key: 'label',
+        key:
+          'label',
+
         label:
           'Income / Expense',
       },
+
       {
-        key: 'detail',
+        key:
+          'detail',
+
         label:
           'Amount (NGN)',
       },
+
       {
-        key: 'total',
+        key:
+          'total',
+
         label:
           'Total (NGN)',
       },
@@ -191,22 +220,33 @@ export function reportColumns(
   ) {
     return [
       {
-        key: 'house',
+        key:
+          'house',
+
         label:
           'Category',
       },
+
       {
-        key: 'charge',
+        key:
+          'charge',
+
         label:
           'Description',
       },
+
       {
-        key: 'date',
+        key:
+          'date',
+
         label:
           'Date',
       },
+
       {
-        key: 'amount',
+        key:
+          'amount',
+
         label:
           'Amount (NGN)',
       },
@@ -215,17 +255,25 @@ export function reportColumns(
 
   return [
     {
-      key: 'house',
+      key:
+        'house',
+
       label:
         'Target',
     },
+
     {
-      key: 'charge',
+      key:
+        'charge',
+
       label:
         'Charge',
     },
+
     {
-      key: 'period',
+      key:
+        'period',
+
       label:
         'Period',
     },
@@ -234,35 +282,50 @@ export function reportColumns(
     'collected'
       ? [
           {
-            key: 'date',
+            key:
+              'date',
+
             label:
               'Paid date (WAT)',
           },
+
           {
-            key: 'reference',
+            key:
+              'reference',
+
             label:
               'Payment ID',
           },
+
           {
-            key: 'amount',
+            key:
+              'amount',
+
             label:
               'Amount (NGN)',
           },
         ]
       : [
           {
-            key: 'dueDate',
+            key:
+              'dueDate',
+
             label:
               'Due date',
           },
+
           {
-            key: 'status',
+            key:
+              'status',
+
             label:
               'Status',
           },
+
           {
             key:
               'outstanding',
+
             label:
               'Outstanding (NGN)',
           },
@@ -271,23 +334,32 @@ export function reportColumns(
 }
 
 export function reportCell(
-  row: ReportRow,
-  key: string
+  row:
+    ReportRow,
+
+  key:
+    string
 ) {
   const value =
-    row[key]
+    row[
+      key
+    ]
 
   if (
-    value == null
+    value ==
+    null
   ) {
     return ''
   }
 
   if (
-    key === 'date'
+    key ===
+    'date'
   ) {
     const text =
-      String(value)
+      String(
+        value
+      )
 
     return text.includes(
       'T'
@@ -307,42 +379,60 @@ export function reportCell(
     'dueDate'
   ) {
     return formatDateGb(
-      String(value),
+      String(
+        value
+      ),
       ''
     )
   }
 
-  return String(value)
+  return String(
+    value
+  )
 }
 
-export function reportCsv(
-  type: ReportType,
-  rows: ReportRow[],
-  from?: string,
-  to?: string
+function escapeCsv(
+  value:
+    string
+) {
+  const safe =
+    /^[=+@\-\t\r]/.test(
+      value
+    )
+      ? "'" +
+        value
+      : value
+
+  return (
+    '"' +
+    safe.replace(
+      /"/g,
+      '""'
+    ) +
+    '"'
+  )
+}
+
+/*
+ * Returns the CSV metadata/header section only.
+ *
+ * The UTF-8 BOM belongs here so streaming exports emit it
+ * exactly once, regardless of the number of row batches.
+ */
+export function reportCsvHeader(
+  type:
+    ReportType,
+
+  from?:
+    string,
+
+  to?:
+    string
 ) {
   const columns =
-    reportColumns(type)
-
-  const escape = (
-    value: string
-  ) => {
-    const safe =
-      /^[=+@\-\t\r]/.test(
-        value
-      )
-        ? "'" + value
-        : value
-
-    return (
-      '"' +
-      safe.replace(
-        /"/g,
-        '""'
-      ) +
-      '"'
+    reportColumns(
+      type
     )
-  }
 
   const displayFrom =
     from
@@ -360,45 +450,123 @@ export function reportCsv(
         )
       : ''
 
+  const lines = [
+    ...(type ===
+    'income-statement'
+      ? [
+          [
+            `Income Statement: ${displayFrom} to ${displayTo}`,
+
+            'Cash basis; payment dates in WAT',
+
+            '',
+          ]
+            .map(
+              escapeCsv
+            )
+            .join(
+              ','
+            ),
+        ]
+      : []),
+
+    columns
+      .map(
+        (
+          column
+        ) =>
+          escapeCsv(
+            column.label
+          )
+      )
+      .join(
+        ','
+      ),
+  ]
+
   return (
     '\uFEFF' +
-    [
-      ...(type ===
-      'income-statement'
-        ? [
-            [
-              `Income Statement: ${displayFrom} to ${displayTo}`,
-              'Cash basis; payment dates in WAT',
-              '',
-            ]
-              .map(escape)
-              .join(','),
-          ]
-        : []),
-
-      columns
-        .map(
-          (column) =>
-            escape(
-              column.label
-            )
-        )
-        .join(','),
-
-      ...rows.map(
-        (row) =>
-          columns
-            .map(
-              (column) =>
-                escape(
-                  reportCell(
-                    row,
-                    column.key
-                  )
-                )
-            )
-            .join(',')
-      ),
-    ].join('\r\n')
+    lines.join(
+      '\r\n'
+    )
   )
+}
+
+/*
+ * Returns only CSV data rows.
+ *
+ * There is deliberately no BOM and no header here so this can
+ * safely be called for every streamed 500-row batch.
+ */
+export function reportCsvRows(
+  type:
+    ReportType,
+
+  rows:
+    ReportRow[]
+) {
+  const columns =
+    reportColumns(
+      type
+    )
+
+  return rows
+    .map(
+      (
+        row
+      ) =>
+        columns
+          .map(
+            (
+              column
+            ) =>
+              escapeCsv(
+                reportCell(
+                  row,
+                  column.key
+                )
+              )
+          )
+          .join(
+            ','
+          )
+    )
+    .join(
+      '\r\n'
+    )
+}
+
+/*
+ * Backward-compatible complete CSV generator used by tests and
+ * anywhere a small report is intentionally built in memory.
+ */
+export function reportCsv(
+  type:
+    ReportType,
+
+  rows:
+    ReportRow[],
+
+  from?:
+    string,
+
+  to?:
+    string
+) {
+  const header =
+    reportCsvHeader(
+      type,
+      from,
+      to
+    )
+
+  const body =
+    reportCsvRows(
+      type,
+      rows
+    )
+
+  return body
+    ? `${header}\r\n${body}`
+    : header
 }

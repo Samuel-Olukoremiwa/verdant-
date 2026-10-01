@@ -8,7 +8,8 @@ import {
 } from '@/lib/dashboard'
 
 import {
-  reportCsv,
+  reportCsvHeader,
+  reportCsvRows,
   type ReportRow,
   type ReportType,
 } from '@/lib/report-format'
@@ -32,6 +33,9 @@ const PREVIEW_PAGE_SIZE =
 
 const EXPORT_BATCH_SIZE =
   500
+
+const PDF_EXPORT_MAX_ROWS =
+  5000
 
 function validDate(
   value: string
@@ -422,72 +426,112 @@ export async function GET(
       )
     }
 
-    const rows:
-      ReportRow[] =
-      []
-
-    let offset =
-      0
-
-    let total =
-      0
-
-    let totalAmount =
-      0
-
-    do {
-      const batch =
-        await loadPage(
-          EXPORT_BATCH_SIZE,
-          offset
-        )
-
-      if (
-        offset ===
+    /*
+     * Load the first export batch before creating a response.
+     *
+     * This gives us:
+     *
+     *   - the total row count
+     *   - report totals
+     *   - a chance to return a normal JSON error if the first
+     *     database request fails
+     *
+     * CSV batches after this point are streamed directly to the
+     * response and are never accumulated into one large array.
+     */
+    const firstBatch =
+      await loadPage(
+        EXPORT_BATCH_SIZE,
         0
-      ) {
-        total =
-          batch.total
-
-        totalAmount =
-          batch.totalAmount
-      }
-
-      rows.push(
-        ...batch.rows
       )
-
-      if (
-        batch.rows.length ===
-        0
-      ) {
-        break
-      }
-
-      offset +=
-        batch.rows.length
-    } while (
-      offset <
-      total
-    )
 
     if (
       format ===
       'csv'
     ) {
-      const csv =
-        reportCsv(
-          type,
-          rows,
-          from,
-          to
-        )
+      const encoder =
+        new TextEncoder()
+
+      const stream =
+        new ReadableStream<
+          Uint8Array
+        >({
+          async start(
+            controller
+          ) {
+            try {
+              controller.enqueue(
+                encoder.encode(
+                  reportCsvHeader(
+                    type,
+                    from,
+                    to
+                  )
+                )
+              )
+
+              let batch =
+                firstBatch
+
+              let offset =
+                0
+
+              while (
+                true
+              ) {
+                if (
+                  batch.rows
+                    .length >
+                  0
+                ) {
+                  controller.enqueue(
+                    encoder.encode(
+                      '\r\n' +
+                        reportCsvRows(
+                          type,
+                          batch.rows
+                        )
+                    )
+                  )
+                }
+
+                offset +=
+                  batch.rows
+                    .length
+
+                if (
+                  batch.rows
+                    .length ===
+                    0 ||
+                  offset >=
+                    batch.total
+                ) {
+                  break
+                }
+
+                batch =
+                  await loadPage(
+                    EXPORT_BATCH_SIZE,
+                    offset
+                  )
+              }
+
+              controller.close()
+            } catch (
+              error
+            ) {
+              controller.error(
+                error
+              )
+            }
+          },
+        })
 
       const filename =
         `${type}-report-${from}-to-${to}.csv`
 
       return new Response(
-        csv,
+        stream,
         {
           status:
             200,
@@ -506,13 +550,90 @@ export async function GET(
       )
     }
 
+    /*
+     * PDFs are generated in the browser using jsPDF.
+     *
+     * Very large tables produce impractically large PDFs and
+     * require the complete JSON dataset to be held in browser
+     * memory. Keep PDF useful for normal operational reports
+     * and direct very large exports to streaming CSV instead.
+     */
+    if (
+      firstBatch.total >
+      PDF_EXPORT_MAX_ROWS
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            `This PDF contains ${firstBatch.total.toLocaleString(
+              'en-NG'
+            )} rows. PDF export supports up to ${PDF_EXPORT_MAX_ROWS.toLocaleString(
+              'en-NG'
+            )} rows. Use CSV for larger reports.`,
+
+          total:
+            firstBatch.total,
+
+          maxPdfRows:
+            PDF_EXPORT_MAX_ROWS,
+        },
+        {
+          status:
+            413,
+
+          headers: {
+            'Cache-Control':
+              'no-store',
+          },
+        }
+      )
+    }
+
+    const rows:
+      ReportRow[] = [
+        ...firstBatch.rows,
+      ]
+
+    let offset =
+      firstBatch.rows
+        .length
+
+    while (
+      offset <
+      firstBatch.total
+    ) {
+      const batch =
+        await loadPage(
+          EXPORT_BATCH_SIZE,
+          offset
+        )
+
+      if (
+        batch.rows
+          .length ===
+        0
+      ) {
+        break
+      }
+
+      rows.push(
+        ...batch.rows
+      )
+
+      offset +=
+        batch.rows
+          .length
+    }
+
     return NextResponse.json(
       {
         rows,
 
-        total,
+        total:
+          firstBatch.total,
 
-        totalAmount,
+        totalAmount:
+          firstBatch.totalAmount,
       },
       {
         headers: {

@@ -141,10 +141,13 @@ const {
 const {
   periodRange,
   reportCsv,
+  reportCsvHeader,
+  reportCsvRows,
 } =
   load(
     'report-format'
   )
+
 
 const {
   readAll,
@@ -948,6 +951,132 @@ test(
           []
         ),
       /Invalid/
+    )
+  }
+)
+
+
+test(
+  'streamed CSV batches compose to the same complete export',
+  () => {
+    const rows = [
+      {
+        house:
+          'House 1',
+
+        charge:
+          'Service Charge',
+
+        period:
+          'January 2027',
+
+        dueDate:
+          '2027-01-15',
+
+        status:
+          'unpaid',
+
+        outstanding:
+          5000,
+      },
+
+      {
+        house:
+          'House 2',
+
+        charge:
+          '=FORMULA',
+
+        period:
+          'January 2027',
+
+        dueDate:
+          '2027-01-15',
+
+        status:
+          'unpaid',
+
+        outstanding:
+          5000,
+      },
+
+      {
+        house:
+          'House 3',
+
+        charge:
+          'CDA Levy',
+
+        period:
+          'January 2027',
+
+        dueDate:
+          '2027-01-15',
+
+        status:
+          'partial',
+
+        outstanding:
+          2500,
+      },
+    ]
+
+    const complete =
+      reportCsv(
+        'due',
+        rows,
+        '2027-01-01',
+        '2027-01-31'
+      )
+
+    const streamed =
+      [
+        reportCsvHeader(
+          'due',
+          '2027-01-01',
+          '2027-01-31'
+        ),
+
+        reportCsvRows(
+          'due',
+          rows.slice(
+            0,
+            2
+          )
+        ),
+
+        reportCsvRows(
+          'due',
+          rows.slice(
+            2
+          )
+        ),
+      ]
+        .filter(
+          Boolean
+        )
+        .join(
+          '\r\n'
+        )
+
+    assert.equal(
+      streamed,
+      complete
+    )
+
+    assert.equal(
+      streamed
+        .split(
+          '\uFEFF'
+        )
+        .length -
+        1,
+      1
+    )
+
+    assert.match(
+      streamed,
+      /"'=FORMULA"/
     )
   }
 )
