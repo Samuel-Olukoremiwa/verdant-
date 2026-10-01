@@ -82,6 +82,8 @@ const sqlFiles = [
   'migrations/20260930202355_registration_approval_claimed_by_index.sql',
 
   'migrations/20260930211856_restrict_single_house_invoice_helper.sql',
+
+  'migrations/20261001004849_optimize_estate_wide_invoice_generation.sql',
 ]
 
 function sql(
@@ -3759,6 +3761,484 @@ test(
       assert.equal(
         privileges.service_execute,
         true
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'estate-wide invoice generation uses one set-based operation across hundreds of households',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const adminAuthId =
+        '66666666-6666-4666-8666-666666666666'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES (
+            $1::uuid,
+            'bulk-billing-admin@example.test'
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      await db.query(
+        `
+          INSERT INTO public.admins (
+            auth_user_id,
+            full_name,
+            role
+          )
+
+          VALUES (
+            $1::uuid,
+            'Bulk Billing Test Admin',
+            'admin'
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      /*
+       * Build 500 valid properties:
+       *
+       *   10 streets
+       *   ×
+       *   50 houses per street
+       *   =
+       *   500 households
+       *
+       * This respects Zadant's address-integrity rules instead
+       * of bypassing them for the performance test.
+       */
+      await db.exec(`
+        WITH created_streets AS (
+          INSERT INTO public.streets (
+            name
+          )
+
+          SELECT
+            'Bulk Billing Street '
+            ||
+            number::text
+
+          FROM generate_series(
+            1,
+            10
+          ) AS number
+
+          RETURNING
+            id
+        )
+
+        INSERT INTO public.houses (
+          street_id,
+          house_number,
+          address
+        )
+
+        SELECT
+          street.id,
+
+          house_number::text,
+
+          'Temporary address'
+
+        FROM created_streets street
+
+        CROSS JOIN generate_series(
+          1,
+          50
+        ) AS house_number;
+      `)
+
+      /*
+       * Avoid depending on a hard-coded charge name.
+       * Any monthly household due type is valid for this
+       * estate-wide billing test.
+       */
+      const dueType =
+        await first(
+          db,
+          `
+            SELECT
+              id,
+              amount,
+              name
+
+            FROM public.due_types
+
+            WHERE
+              billing_scope =
+                'house'
+
+              AND frequency =
+                'monthly'
+
+            ORDER BY
+              name
+
+            LIMIT 1
+          `
+        )
+
+      assert.ok(
+        dueType,
+        'Expected at least one monthly household due type'
+      )
+
+      const houseCount =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int
+                AS n
+
+            FROM public.houses
+          `
+        )
+
+      assert.equal(
+        houseCount.n,
+        500
+      )
+
+      /*
+       * Confirm the migration genuinely replaced the old
+       * procedural house-by-house loop.
+       */
+      const definition =
+        await first(
+          db,
+          `
+            SELECT
+              pg_get_functiondef(
+                p.oid
+              ) AS definition
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'generate_house_invoices'
+
+              AND
+                pg_get_function_identity_arguments(
+                  p.oid
+                )
+                =
+                'p_due_type uuid, p_period_start date, p_period_end date, p_due_date date'
+          `
+        )
+
+      assert.ok(
+        definition
+      )
+
+      assert.match(
+        definition.definition,
+        /INSERT INTO public\.invoices/i
+      )
+
+      assert.match(
+        definition.definition,
+        /FROM candidate_houses/i
+      )
+
+      assert.equal(
+        /\bFOR\s+v_house\s+IN\b/i.test(
+          definition.definition
+        ),
+        false
+      )
+
+      assert.equal(
+        /generate_single_house_invoice\s*\(/i.test(
+          definition.definition
+        ),
+        false
+      )
+
+      await db.query(
+        `
+          SELECT set_config(
+            'request.jwt.claim.sub',
+            $1::text,
+            false
+          )
+        `,
+        [
+          adminAuthId,
+        ]
+      )
+
+      await db.exec(
+        'SET ROLE authenticated'
+      )
+
+      /*
+       * First run:
+       * every one of the 500 households should receive exactly
+       * one invoice.
+       */
+      const firstRun =
+        await first(
+          db,
+          `
+            SELECT
+              public.generate_house_invoices(
+                $1::uuid,
+                '2027-01-01'::date,
+                '2027-01-31'::date,
+                '2027-01-15'::date
+              ) AS result
+          `,
+          [
+            dueType.id,
+          ]
+        )
+
+      assert.equal(
+        Number(
+          firstRun
+            .result
+            .created
+        ),
+        500
+      )
+
+      assert.equal(
+        Number(
+          firstRun
+            .result
+            .skipped
+        ),
+        0
+      )
+
+      assert.equal(
+        firstRun
+          .result
+          .period_label,
+        'January 2027'
+      )
+
+      assert.equal(
+        firstRun
+          .result
+          .period_start,
+        '2027-01-01'
+      )
+
+      assert.equal(
+        firstRun
+          .result
+          .period_end,
+        '2027-01-31'
+      )
+
+           /*
+       * Second identical run:
+       * nothing new should be created.
+       */
+      const secondRun =
+        await first(
+          db,
+          `
+            SELECT
+              public.generate_house_invoices(
+                $1::uuid,
+                '2027-01-01'::date,
+                '2027-01-31'::date,
+                '2027-01-15'::date
+              ) AS result
+          `,
+          [
+            dueType.id,
+          ]
+        )
+
+      assert.equal(
+        Number(
+          secondRun
+            .result
+            .created
+        ),
+        0
+      )
+
+      assert.equal(
+        Number(
+          secondRun
+            .result
+            .skipped
+        ),
+        500
+      )
+
+      /*
+       * The RPC itself must be callable by the authenticated
+       * estate administrator, but unrestricted invoice-table
+       * inspection is intentionally not performed as that role.
+       *
+       * Return to the test database owner before making
+       * internal verification queries.
+       */
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      /*
+       * Verify the database contains exactly one generated
+       * invoice per household.
+       */
+      const generated =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int
+                AS n
+
+            FROM public.invoices
+
+            WHERE
+              due_type_id =
+                $1::uuid
+
+              AND resident_id
+                IS NULL
+
+              AND period_start =
+                '2027-01-01'::date
+
+              AND period_end =
+                '2027-01-31'::date
+          `,
+          [
+            dueType.id,
+          ]
+        )
+
+      assert.equal(
+        generated.n,
+        500
+      )
+
+      /*
+       * There must be no household with more than one invoice
+       * for the same due type and billing period.
+       */
+      const duplicates =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int
+                AS n
+
+            FROM (
+              SELECT
+                house_id
+
+              FROM public.invoices
+
+              WHERE
+                due_type_id =
+                  $1::uuid
+
+                AND resident_id
+                  IS NULL
+
+                AND period_start =
+                  '2027-01-01'::date
+
+                AND period_end =
+                  '2027-01-31'::date
+
+              GROUP BY
+                house_id
+
+              HAVING count(*) >
+                1
+            ) duplicate_houses
+          `,
+          [
+            dueType.id,
+          ]
+        )
+
+      assert.equal(
+        duplicates.n,
+        0
+      )
+
+      /*
+       * Confirm the generated houses themselves still satisfy
+       * Zadant's address-integrity model.
+       */
+      const invalidHouses =
+        await first(
+          db,
+          `
+            SELECT
+              count(*)::int
+                AS n
+
+            FROM public.houses
+
+            WHERE
+              street_id
+                IS NULL
+
+              OR house_number
+                IS NULL
+
+              OR btrim(
+                house_number
+              ) =
+                ''
+
+              OR address
+                IS NULL
+
+              OR btrim(
+                address
+              ) =
+                ''
+          `
+        )
+
+      assert.equal(
+        invalidHouses.n,
+        0
+      )
+
+      await db.exec(
+        'RESET ROLE'
       )
     } finally {
       await db.close()
