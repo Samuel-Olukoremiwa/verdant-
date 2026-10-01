@@ -4,6 +4,9 @@ import { test } from "node:test";
 import { createRequire } from "node:module";
 import vm from "node:vm";
 import ts from "typescript";
+import {
+  legacySql,
+} from "./legacy-sql-from-baseline.mjs";
 
 const require = createRequire(
   import.meta.url
@@ -25,12 +28,8 @@ test(
       );
 
       const sql =
-        fs.readFileSync(
-          new URL(
-            "../supabase/migration_design_security.sql",
-            import.meta.url,
-          ),
-          "utf8",
+        legacySql(
+          "migration_design_security.sql",
         );
 
       await db.exec(sql);
