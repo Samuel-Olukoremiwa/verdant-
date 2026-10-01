@@ -24,6 +24,17 @@ import {
   createServiceClient,
 } from '@/lib/supabase/service'
 
+type FinalizationResult = {
+  finalized?: boolean
+  already_finalized?: boolean
+  reason?: string
+  status?: string
+  registration_id?: string
+  resident_id?: string
+  auth_user_id?: string
+  house_id?: string
+}
+
 async function queueRegistrationSms({
   registrationId,
   phone,
@@ -101,9 +112,7 @@ export async function POST(
       .auth
       .getUser()
 
-  if (
-    !user
-  ) {
+  if (!user) {
     return NextResponse.json(
       {
         error:
@@ -180,9 +189,7 @@ export async function POST(
         }
       )
 
-    if (
-      error
-    ) {
+    if (error) {
       console.error(
         'Could not release registration approval claim:',
         error.message
@@ -195,12 +202,17 @@ export async function POST(
       true
   }
 
+  /*
+   * Delete the resident before deleting the Auth account.
+   *
+   * This is safer than the previous Auth-first rollback because
+   * residents.auth_user_id has a foreign key to auth.users.
+   */
   async function rollbackProvisionedAccount({
     residentId,
     authUserId,
   }: {
     residentId: string
-
     authUserId?:
       | string
       | null
@@ -208,6 +220,39 @@ export async function POST(
     const errors:
       string[] =
       []
+
+    const {
+      error:
+        residentDeleteError,
+    } =
+      await service
+        .from(
+          'residents'
+        )
+        .delete()
+        .eq(
+          'id',
+          residentId
+        )
+
+    if (
+      residentDeleteError
+    ) {
+      errors.push(
+        `Resident rollback failed: ${residentDeleteError.message}`
+      )
+
+      /*
+       * Do not delete the Auth user if the resident could not be
+       * removed. The resident may still reference that user.
+       */
+      return {
+        ok:
+          false,
+
+        errors,
+      }
+    }
 
     if (
       authUserId
@@ -232,28 +277,6 @@ export async function POST(
       }
     }
 
-    const {
-      error:
-        residentDeleteError,
-    } =
-      await service
-        .from(
-          'residents'
-        )
-        .delete()
-        .eq(
-          'id',
-          residentId
-        )
-
-    if (
-      residentDeleteError
-    ) {
-      errors.push(
-        `Resident rollback failed: ${residentDeleteError.message}`
-      )
-    }
-
     return {
       ok:
         errors.length ===
@@ -268,7 +291,6 @@ export async function POST(
     authUserId,
   }: {
     residentId: string
-
     authUserId?:
       | string
       | null
@@ -325,8 +347,7 @@ export async function POST(
   }
 
   /*
-   * A retry after a completed approval must reuse the existing
-   * resident/auth account rather than provision another one.
+   * Retry after a completed approval.
    */
   if (
     reg.status ===
@@ -601,8 +622,7 @@ export async function POST(
   }
 
   /*
-   * Claim the registration before any provisioning side
-   * effects occur.
+   * Claim the registration before any provisioning side effect.
    */
   const {
     data:
@@ -746,17 +766,8 @@ export async function POST(
   }
 
   /*
-   * House resolution/reuse and resident creation happen inside
-   * one DB transaction.
-   *
-   * The shared helper now owns:
-   *
-   *   - resident field validation
-   *   - active-email uniqueness
-   *   - one-active-owner enforcement
-   *   - date requirements
-   *   - QR generation
-   *   - resident insertion
+   * Resolve/reuse the property and create the resident in one
+   * database transaction.
    */
   const {
     data:
@@ -991,8 +1002,7 @@ export async function POST(
   }
 
   /*
-   * Newly approved residents use the invite flow and set their
-   * own password.
+   * Supabase Auth remains the only unavoidable external step.
    */
   const {
     data:
@@ -1083,233 +1093,119 @@ export async function POST(
   }
 
   /*
-   * Link only the resident created by this approval to the
-   * exact Auth account returned by Supabase.
+   * Atomically:
+   *
+   *   1. link resident -> Auth user
+   *   2. mark registration approved
+   *
+   * There is no DB-visible half-state between these operations.
    */
   const {
     data:
-      linkedUpdate,
+      finalizationResult,
 
     error:
-      linkError,
+      finalizationError,
   } =
-    await service
-      .from(
-        'residents'
-      )
-      .update({
-        auth_user_id:
-          authUserId,
-      })
-      .eq(
-        'id',
-        residentId
-      )
-      .is(
-        'auth_user_id',
-        null
-      )
-      .select(
-        'id, email, auth_user_id'
-      )
-      .maybeSingle()
-
-  if (
-    linkError ||
-    !linkedUpdate ||
-    linkedUpdate
-      .auth_user_id !==
-      authUserId
-  ) {
-    const rollback =
-      await releaseAfterSafeRollback({
-        residentId,
-        authUserId,
-      })
-
-    return NextResponse.json(
+    await service.rpc(
+      'finalize_registration_approval',
       {
-        error:
-          rollback.ok
-            ? 'The invitation was created, but the resident account could not be linked safely. The incomplete account was rolled back.'
-            : 'The resident account could not be linked and the incomplete account could not be fully rolled back.',
+        p_registration:
+          id,
 
-        rollback:
-          rollback.ok
-            ? undefined
-            : rollback.errors,
-      },
-      {
-        status:
-          500,
-      }
-    )
-  }
-
-  /*
-   * Confirm the linked identity with a separate read.
-   */
-  const {
-    data:
-      linkedResident,
-
-    error:
-      linkedResidentError,
-  } =
-    await service
-      .from(
-        'residents'
-      )
-      .select(
-        'id, email, auth_user_id'
-      )
-      .eq(
-        'id',
-        residentId
-      )
-      .single()
-
-  if (
-    linkedResidentError ||
-    !linkedResident ||
-    linkedResident
-      .auth_user_id !==
-      authUserId ||
-    linkedResident.email
-      ?.trim()
-      .toLowerCase() !==
-      email
-  ) {
-    const rollback =
-      await releaseAfterSafeRollback({
-        residentId,
-        authUserId,
-      })
-
-    return NextResponse.json(
-      {
-        error:
-          rollback.ok
-            ? 'Resident account verification failed after invitation. The incomplete account was rolled back.'
-            : 'Resident account verification failed and the incomplete account could not be fully rolled back.',
-
-        rollback:
-          rollback.ok
-            ? undefined
-            : rollback.errors,
-      },
-      {
-        status:
-          500,
-      }
-    )
-  }
-
-  const reviewedAt =
-    new Date()
-      .toISOString()
-
-  /*
-   * Final approval is conditional on this request still owning
-   * the approval claim.
-   */
-  const {
-    data:
-      approvalResult,
-
-    error:
-      approvalError,
-  } =
-    await service
-      .from(
-        'registration_requests'
-      )
-      .update({
-        status:
-          'approved',
-
-        ...dates.data,
-
-        reviewed_by:
+        p_admin:
           admin.id,
 
-        reviewed_at:
-          reviewedAt,
+        p_claim_token:
+          approvalClaimToken,
 
-        created_resident_id:
+        p_resident:
           residentId,
-      })
-      .eq(
-        'id',
-        id
-      )
-      .eq(
-        'status',
-        'pending'
-      )
-      .eq(
-        'approval_claim_token',
-        approvalClaimToken
-      )
-      .select(
-        'id, status, created_resident_id'
-      )
-      .maybeSingle()
 
-  let approvalConfirmed =
-    !approvalError &&
-    approvalResult
-      ?.status ===
-      'approved' &&
-    approvalResult
-      .created_resident_id ===
-      residentId
+        p_auth_user:
+          authUserId,
+
+        p_email:
+          email,
+
+        p_move_in_date:
+          dates
+            .data
+            .move_in_date,
+
+        p_property_allocation_date:
+          dates
+            .data
+            .property_allocation_date,
+      }
+    )
+
+  const finalization =
+    (
+      finalizationResult ??
+      null
+    ) as
+      | FinalizationResult
+      | null
+
+  let finalizationConfirmed =
+    !finalizationError &&
+    finalization
+      ?.finalized ===
+      true
 
   /*
-   * A network/PostgREST error does not prove the UPDATE failed.
-   * Verify the committed state before deleting anything.
+   * A transport failure does not prove PostgreSQL rolled back.
+   *
+   * Verify current state before deleting anything.
    */
   if (
-    !approvalConfirmed
+    !finalizationConfirmed
   ) {
-    const {
-      data:
-        currentRegistration,
+    const [
+      registrationState,
+      residentState,
+    ] =
+      await Promise.all([
+        service
+          .from(
+            'registration_requests'
+          )
+          .select(
+            'id, status, created_resident_id, approval_claim_token'
+          )
+          .eq(
+            'id',
+            id
+          )
+          .maybeSingle(),
 
-      error:
-        verificationError,
-    } =
-      await service
-        .from(
-          'registration_requests'
-        )
-        .select(
-          'id, status, created_resident_id, approval_claim_token'
-        )
-        .eq(
-          'id',
-          id
-        )
-        .maybeSingle()
+        service
+          .from(
+            'residents'
+          )
+          .select(
+            'id, email, house_id, auth_user_id'
+          )
+          .eq(
+            'id',
+            residentId
+          )
+          .maybeSingle(),
+      ])
 
+    /*
+     * If either verification read fails, state is uncertain.
+     * Never compensate destructively in an uncertain state.
+     */
     if (
-      !verificationError &&
-      currentRegistration
-        ?.status ===
-        'approved' &&
-      currentRegistration
-        .created_resident_id ===
-        residentId
-    ) {
-      approvalConfirmed =
-        true
-    } else if (
-      verificationError
+      registrationState.error ||
+      residentState.error
     ) {
       return NextResponse.json(
         {
           error:
-            'The resident account was created, but the final registration approval could not be verified. Do not retry immediately. Refresh the registration list first.',
+            'The resident account was provisioned, but final registration approval could not be verified. Do not retry immediately. Refresh the registration list first.',
 
           approvalState:
             'unknown',
@@ -1323,13 +1219,42 @@ export async function POST(
             500,
         }
       )
+    }
+
+    const currentRegistration =
+      registrationState.data
+
+    const currentResident =
+      residentState.data
+
+    if (
+      currentRegistration
+        ?.status ===
+        'approved' &&
+      currentRegistration
+        .created_resident_id ===
+        residentId &&
+      currentResident
+        ?.auth_user_id ===
+        authUserId &&
+      currentResident
+        .email
+        ?.trim()
+        .toLowerCase() ===
+        email
+    ) {
+      finalizationConfirmed =
+        true
     } else if (
       currentRegistration
         ?.status ===
         'approved'
     ) {
       /*
-       * Another approval completed first with another resident.
+       * Another approval completed first.
+       *
+       * Our resident/Auth pair is not the winning account and
+       * can therefore be safely cleaned up.
        */
       const rollback =
         await rollbackProvisionedAccount({
@@ -1356,8 +1281,8 @@ export async function POST(
       )
     } else {
       /*
-       * PostgreSQL confirms our approval did not commit, so
-       * cleanup is safe.
+       * PostgreSQL confirms the atomic finalization did not
+       * commit. Rollback is now safe.
        */
       const rollback =
         await rollbackProvisionedAccount({
@@ -1377,15 +1302,30 @@ export async function POST(
         await releaseApprovalClaim()
       }
 
+      const reason =
+        finalization
+          ?.reason
+
+      const conflict =
+        [
+          'already_reviewed',
+          'claim_lost',
+          'resident_conflict',
+          'approved_identity_mismatch',
+          'auth_user_conflict',
+          'auth_user_in_use',
+        ].includes(
+          reason ??
+          ''
+        )
+
       return NextResponse.json(
         {
           error:
             rollback.ok
-              ? currentRegistration
-                  ?.status ===
-                  'pending'
-                ? 'Saving the registration approval failed. The incomplete resident account was rolled back safely. You can retry the approval.'
-                : 'The registration was reviewed before this approval could complete. The incomplete account was rolled back.'
+              ? conflict
+                ? 'The registration changed while approval was being completed. The incomplete account was rolled back safely. Refresh and review the registration again.'
+                : 'Saving the registration approval failed. The incomplete resident account was rolled back safely. You can retry the approval.'
               : 'Saving the registration approval failed and the incomplete account could not be fully rolled back.',
 
           rollback:
@@ -1395,10 +1335,7 @@ export async function POST(
         },
         {
           status:
-            currentRegistration &&
-            currentRegistration
-              .status !==
-              'pending'
+            conflict
               ? 409
               : 500,
         }
@@ -1406,10 +1343,21 @@ export async function POST(
     }
   }
 
-  /*
-   * The existing status trigger clears the approval claim once
-   * approval succeeds.
-   */
+  if (
+    !finalizationConfirmed
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'The registration approval could not be confirmed.',
+      },
+      {
+        status:
+          500,
+      }
+    )
+  }
+
   const sms =
     await queueRegistrationSms({
       registrationId:
@@ -1433,6 +1381,8 @@ export async function POST(
     sms,
 
     alreadyApproved:
-      false,
+      finalization
+        ?.already_finalized ===
+        true,
   })
 }

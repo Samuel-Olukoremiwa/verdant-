@@ -86,6 +86,8 @@ const sqlFiles = [
   'migrations/20261001004849_optimize_estate_wide_invoice_generation.sql',
 
   'migrations/20261001011319_centralize_resident_creation.sql',
+
+  'migrations/20261001014954_atomic_registration_finalization.sql',
 ]
 
 function sql(
@@ -4792,6 +4794,788 @@ test(
     assert.equal(
       source.includes(
         'existingOwner'
+      ),
+      false
+    )
+  }
+)
+
+test(
+  'registration finalization is service-only and security-invoker',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const privileges =
+        await first(
+          db,
+          `
+            SELECT
+              p.prosecdef
+                AS security_definer,
+
+              has_function_privilege(
+                'anon',
+                p.oid,
+                'EXECUTE'
+              ) AS anon_execute,
+
+              has_function_privilege(
+                'authenticated',
+                p.oid,
+                'EXECUTE'
+              ) AS authenticated_execute,
+
+              has_function_privilege(
+                'service_role',
+                p.oid,
+                'EXECUTE'
+              ) AS service_execute
+
+            FROM pg_proc p
+
+            JOIN pg_namespace n
+              ON n.oid =
+                p.pronamespace
+
+            WHERE
+              n.nspname =
+                'public'
+
+              AND p.proname =
+                'finalize_registration_approval'
+
+              AND
+                pg_get_function_identity_arguments(
+                  p.oid
+                )
+                =
+                'p_registration uuid, p_admin uuid, p_claim_token uuid, p_resident uuid, p_auth_user uuid, p_email text, p_move_in_date date, p_property_allocation_date date'
+          `
+        )
+
+      assert.ok(
+        privileges
+      )
+
+      assert.equal(
+        privileges
+          .security_definer,
+        false
+      )
+
+      assert.equal(
+        privileges
+          .anon_execute,
+        false
+      )
+
+      assert.equal(
+        privileges
+          .authenticated_execute,
+        false
+      )
+
+      assert.equal(
+        privileges
+          .service_execute,
+        true
+      )
+    } finally {
+      await db.close()
+    }
+  }
+)
+
+test(
+  'registration finalization links Auth and approval atomically and is idempotent',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const adminAuthId =
+        '71000000-0000-4000-8000-000000000001'
+
+      const invitedAuthId =
+        '71000000-0000-4000-8000-000000000002'
+
+      const claimToken =
+        '71000000-0000-4000-8000-000000000003'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES
+            (
+              $1::uuid,
+              'atomic-admin@example.test'
+            ),
+            (
+              $2::uuid,
+              'atomic-resident@example.test'
+            )
+        `,
+        [
+          adminAuthId,
+          invitedAuthId,
+        ]
+      )
+
+      const admin =
+        await first(
+          db,
+          `
+            INSERT INTO public.admins (
+              auth_user_id,
+              full_name,
+              role
+            )
+
+            VALUES (
+              $1::uuid,
+              'Atomic Approval Admin',
+              'admin'
+            )
+
+            RETURNING id
+          `,
+          [
+            adminAuthId,
+          ]
+        )
+
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Atomic Approval Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      await db.exec(
+        'SET ROLE service_role'
+      )
+
+      const provision =
+        await first(
+          db,
+          `
+            SELECT
+              public.provision_registration_resident(
+                $1::uuid,
+                '21',
+                '3-bedroom duplex',
+                $2::jsonb
+              ) AS result
+          `,
+          [
+            street.id,
+
+            JSON.stringify({
+              full_name:
+                'Atomic Resident',
+
+              phone:
+                '08012345678',
+
+              email:
+                'atomic-resident@example.test',
+
+              relationship:
+                'tenant',
+
+              vehicle_plate_numbers:
+                [],
+
+              move_in_date:
+                '2026-10-01',
+
+              property_allocation_date:
+                '2026-09-01',
+            }),
+          ]
+        )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      const residentId =
+        provision
+          .result
+          .resident_id
+
+      const registration =
+        await first(
+          db,
+          `
+            INSERT INTO public.registration_requests (
+              surname,
+              first_name,
+              phone,
+              email,
+              street_id,
+              house_number,
+              house_type,
+              relationship,
+              move_in_date,
+              property_allocation_date,
+              status,
+              approval_claimed_by,
+              approval_claim_token,
+              approval_claimed_at
+            )
+
+            VALUES (
+              'Resident',
+              'Atomic',
+              '08012345678',
+              'atomic-resident@example.test',
+              $1::uuid,
+              '21',
+              '3-bedroom duplex',
+              'tenant',
+              '2026-10-01',
+              '2026-09-01',
+              'pending',
+              $2::uuid,
+              $3::uuid,
+              now()
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+            admin.id,
+            claimToken,
+          ]
+        )
+
+      await db.exec(
+        'SET ROLE service_role'
+      )
+
+      const finalized =
+        await first(
+          db,
+          `
+            SELECT
+              public.finalize_registration_approval(
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                $4::uuid,
+                $5::uuid,
+                'atomic-resident@example.test',
+                '2026-10-01'::date,
+                '2026-09-01'::date
+              ) AS result
+          `,
+          [
+            registration.id,
+            admin.id,
+            claimToken,
+            residentId,
+            invitedAuthId,
+          ]
+        )
+
+      assert.equal(
+        finalized
+          .result
+          .finalized,
+        true
+      )
+
+      assert.equal(
+        finalized
+          .result
+          .already_finalized,
+        false
+      )
+
+      /*
+       * Repeating the exact finalization must be safe even
+       * though the approval trigger already cleared the claim.
+       */
+      const retried =
+        await first(
+          db,
+          `
+            SELECT
+              public.finalize_registration_approval(
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                $4::uuid,
+                $5::uuid,
+                'atomic-resident@example.test',
+                '2026-10-01'::date,
+                '2026-09-01'::date
+              ) AS result
+          `,
+          [
+            registration.id,
+            admin.id,
+            claimToken,
+            residentId,
+            invitedAuthId,
+          ]
+        )
+
+      assert.equal(
+        retried
+          .result
+          .finalized,
+        true
+      )
+
+      assert.equal(
+        retried
+          .result
+          .already_finalized,
+        true
+      )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      const resident =
+        await first(
+          db,
+          `
+            SELECT
+              auth_user_id
+
+            FROM public.residents
+
+            WHERE id =
+              $1::uuid
+          `,
+          [
+            residentId,
+          ]
+        )
+
+      assert.equal(
+        resident.auth_user_id,
+        invitedAuthId
+      )
+
+      const finalRegistration =
+        await first(
+          db,
+          `
+            SELECT
+              status,
+              reviewed_by,
+              created_resident_id,
+              approval_claimed_by,
+              approval_claim_token,
+              approval_claimed_at
+
+            FROM public.registration_requests
+
+            WHERE id =
+              $1::uuid
+          `,
+          [
+            registration.id,
+          ]
+        )
+
+      assert.equal(
+        finalRegistration.status,
+        'approved'
+      )
+
+      assert.equal(
+        finalRegistration.reviewed_by,
+        admin.id
+      )
+
+      assert.equal(
+        finalRegistration
+          .created_resident_id,
+        residentId
+      )
+
+      assert.equal(
+        finalRegistration
+          .approval_claimed_by,
+        null
+      )
+
+      assert.equal(
+        finalRegistration
+          .approval_claim_token,
+        null
+      )
+
+      assert.equal(
+        finalRegistration
+          .approval_claimed_at,
+        null
+      )
+    } finally {
+      await db.exec(
+        'RESET ROLE'
+      ).catch(
+        () => {}
+      )
+
+      await db.close()
+    }
+  }
+)
+
+test(
+  'registration finalization leaves both records unchanged when claim ownership is lost',
+  async () => {
+    const db =
+      await createDatabase()
+
+    try {
+      const adminAuthId =
+        '72000000-0000-4000-8000-000000000001'
+
+      const invitedAuthId =
+        '72000000-0000-4000-8000-000000000002'
+
+      const realClaimToken =
+        '72000000-0000-4000-8000-000000000003'
+
+      const wrongClaimToken =
+        '72000000-0000-4000-8000-000000000004'
+
+      await db.query(
+        `
+          INSERT INTO auth.users (
+            id,
+            email
+          )
+
+          VALUES
+            (
+              $1::uuid,
+              'claim-admin@example.test'
+            ),
+            (
+              $2::uuid,
+              'claim-resident@example.test'
+            )
+        `,
+        [
+          adminAuthId,
+          invitedAuthId,
+        ]
+      )
+
+      const admin =
+        await first(
+          db,
+          `
+            INSERT INTO public.admins (
+              auth_user_id,
+              full_name,
+              role
+            )
+
+            VALUES (
+              $1::uuid,
+              'Claim Test Admin',
+              'admin'
+            )
+
+            RETURNING id
+          `,
+          [
+            adminAuthId,
+          ]
+        )
+
+      const street =
+        await first(
+          db,
+          `
+            INSERT INTO public.streets (
+              name
+            )
+
+            VALUES (
+              'Claim Test Street'
+            )
+
+            RETURNING id
+          `
+        )
+
+      await db.exec(
+        'SET ROLE service_role'
+      )
+
+      const provision =
+        await first(
+          db,
+          `
+            SELECT
+              public.provision_registration_resident(
+                $1::uuid,
+                '22',
+                '3-bedroom duplex',
+                $2::jsonb
+              ) AS result
+          `,
+          [
+            street.id,
+
+            JSON.stringify({
+              full_name:
+                'Claim Resident',
+
+              phone:
+                '08023456789',
+
+              email:
+                'claim-resident@example.test',
+
+              relationship:
+                'tenant',
+
+              vehicle_plate_numbers:
+                [],
+
+              move_in_date:
+                '2026-10-01',
+
+              property_allocation_date:
+                '2026-09-01',
+            }),
+          ]
+        )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      const residentId =
+        provision
+          .result
+          .resident_id
+
+      const registration =
+        await first(
+          db,
+          `
+            INSERT INTO public.registration_requests (
+              surname,
+              first_name,
+              phone,
+              email,
+              street_id,
+              house_number,
+              house_type,
+              relationship,
+              move_in_date,
+              property_allocation_date,
+              status,
+              approval_claimed_by,
+              approval_claim_token,
+              approval_claimed_at
+            )
+
+            VALUES (
+              'Resident',
+              'Claim',
+              '08023456789',
+              'claim-resident@example.test',
+              $1::uuid,
+              '22',
+              '3-bedroom duplex',
+              'tenant',
+              '2026-10-01',
+              '2026-09-01',
+              'pending',
+              $2::uuid,
+              $3::uuid,
+              now()
+            )
+
+            RETURNING id
+          `,
+          [
+            street.id,
+            admin.id,
+            realClaimToken,
+          ]
+        )
+
+      await db.exec(
+        'SET ROLE service_role'
+      )
+
+      const result =
+        await first(
+          db,
+          `
+            SELECT
+              public.finalize_registration_approval(
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
+                $4::uuid,
+                $5::uuid,
+                'claim-resident@example.test',
+                '2026-10-01'::date,
+                '2026-09-01'::date
+              ) AS result
+          `,
+          [
+            registration.id,
+            admin.id,
+            wrongClaimToken,
+            residentId,
+            invitedAuthId,
+          ]
+        )
+
+      assert.equal(
+        result
+          .result
+          .finalized,
+        false
+      )
+
+      assert.equal(
+        result
+          .result
+          .reason,
+        'claim_lost'
+      )
+
+      await db.exec(
+        'RESET ROLE'
+      )
+
+      const resident =
+        await first(
+          db,
+          `
+            SELECT
+              auth_user_id
+
+            FROM public.residents
+
+            WHERE id =
+              $1::uuid
+          `,
+          [
+            residentId,
+          ]
+        )
+
+      assert.equal(
+        resident.auth_user_id,
+        null
+      )
+
+      const registrationAfter =
+        await first(
+          db,
+          `
+            SELECT
+              status,
+              created_resident_id,
+              approval_claim_token
+
+            FROM public.registration_requests
+
+            WHERE id =
+              $1::uuid
+          `,
+          [
+            registration.id,
+          ]
+        )
+
+      assert.equal(
+        registrationAfter.status,
+        'pending'
+      )
+
+      assert.equal(
+        registrationAfter
+          .created_resident_id,
+        null
+      )
+
+      assert.equal(
+        registrationAfter
+          .approval_claim_token,
+        realClaimToken
+      )
+    } finally {
+      await db.exec(
+        'RESET ROLE'
+      ).catch(
+        () => {}
+      )
+
+      await db.close()
+    }
+  }
+)
+
+test(
+  'registration approval delegates Auth linking and approval to the atomic finalizer',
+  () => {
+    const source =
+      fs.readFileSync(
+        path.join(
+          root,
+          'src',
+          'app',
+          'api',
+          'admin',
+          'registrations',
+          '[id]',
+          'approve',
+          'route.ts'
+        ),
+        'utf8'
+      )
+
+    assert.match(
+      source,
+      /\.rpc\(\s*['"]finalize_registration_approval['"]/s
+    )
+
+    assert.equal(
+      /\.from\(\s*['"]residents['"]\s*\)\s*\.update\(/s.test(
+        source
+      ),
+      false
+    )
+
+    assert.equal(
+      /\.from\(\s*['"]registration_requests['"]\s*\)\s*\.update\(/s.test(
+        source
       ),
       false
     )
