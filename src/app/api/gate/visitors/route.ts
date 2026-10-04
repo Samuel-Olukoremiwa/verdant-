@@ -38,6 +38,45 @@ type VisitorRedeemResult = {
     boolean
 }
 
+type VisitorCheckoutResult = {
+  ok:
+    boolean
+
+  already_checked_out:
+    boolean
+
+  id:
+    string
+
+  visitor:
+    string
+
+  host:
+    string
+
+  address:
+    string
+
+  checked_in_at:
+    string
+
+  checked_out_at:
+    string
+}
+
+function validUuid(
+  value:
+    unknown
+): value is string {
+  return (
+    typeof value ===
+      'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+  )
+}
+
 export async function POST(
   request: Request
 ) {
@@ -104,9 +143,7 @@ export async function POST(
       }
     )
 
-  if (
-    error
-  ) {
+  if (error) {
     return NextResponse.json(
       {
         error:
@@ -158,6 +195,112 @@ export async function POST(
             'Visitor billing alert remains queued for background delivery'
           )
         }
+      }
+    )
+  }
+
+  return NextResponse.json(
+    result
+  )
+}
+
+export async function PATCH(
+  request: Request
+) {
+  const db =
+    await createClient()
+
+  const {
+    data: {
+      user,
+    },
+  } =
+    await db.auth.getUser()
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        error:
+          'Please sign in',
+      },
+      {
+        status:
+          401,
+      }
+    )
+  }
+
+  const body =
+    await request
+      .json()
+      .catch(
+        () =>
+          null
+      )
+
+  if (
+    !body ||
+    !validUuid(
+      body.id
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'Choose a valid visitor',
+      },
+      {
+        status:
+          400,
+      }
+    )
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await db.rpc(
+      'checkout_visitor_pass',
+      {
+        p_id:
+          body.id,
+      }
+    )
+
+  if (error) {
+    return NextResponse.json(
+      {
+        error:
+          error.message,
+      },
+      {
+        status:
+          error.code ===
+            '42501'
+            ? 403
+            : 400,
+      }
+    )
+  }
+
+  const result =
+    data as
+      | VisitorCheckoutResult
+      | null
+
+  if (
+    !result ||
+    !result.ok
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'Visitor could not be checked out',
+      },
+      {
+        status:
+          500,
       }
     )
   }

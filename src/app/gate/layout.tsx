@@ -1,5 +1,94 @@
-import {SiteTools} from '@/components/site-tools'
+import {
+  SiteTools,
+} from '@/components/site-tools'
+
 import Link from 'next/link'
-import { requireRole } from '@/lib/auth'
-import { SignOutButton } from '@/components/sign-out-button'
-export default async function GateLayout({children}:{children:React.ReactNode}) {const user=await requireRole(['gate_staff','admin','super_admin']);return <div className="gate-shell"><header className="gate-header"><Link href="/gate" className="brand"><span className="brand-mark">Z</span><span>Zadant<small>Gate operations</small></span></Link><div className="user-menu"><SiteTools/><div><strong>{user.name}</strong><span>{(user.staffRole ?? user.primaryRole).replace('_',' ')}</span></div><SignOutButton /></div></header><main id="main-content">{children}</main></div>}
+
+import {
+  requireRole,
+} from '@/lib/auth'
+
+import {
+  SignOutButton,
+} from '@/components/sign-out-button'
+
+export default async function GateLayout({
+  children,
+}: {
+  children:
+    React.ReactNode
+}) {
+  const user =
+    await requireRole([
+      'gate_staff',
+      'admin',
+      'super_admin',
+    ])
+
+  return (
+    <div className="gate-shell">
+      <header className="gate-header">
+        <Link
+          href="/gate"
+          className="brand"
+        >
+          <span className="brand-mark">
+            Z
+          </span>
+
+          <span>
+            Zadant
+
+            <small>
+              Gate operations
+            </small>
+          </span>
+        </Link>
+
+        <div className="user-menu">
+          <SiteTools />
+
+          <Link
+            href="/gate/emergencies"
+            className="action"
+            style={{
+              background:
+                '#b91c1c',
+
+              borderColor:
+                '#b91c1c',
+            }}
+          >
+            Emergency alerts
+          </Link>
+
+          <div>
+            <strong>
+              {
+                user.name
+              }
+            </strong>
+
+            <span>
+              {(
+                user.staffRole ??
+                user.primaryRole
+              ).replace(
+                '_',
+                ' '
+              )}
+            </span>
+          </div>
+
+          <SignOutButton />
+        </div>
+      </header>
+
+      <main id="main-content">
+        {
+          children
+        }
+      </main>
+    </div>
+  )
+}

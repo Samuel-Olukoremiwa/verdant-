@@ -22,6 +22,7 @@ const REPORT_TYPES:
   ReportType[] = [
     'due',
     'collected',
+    'gate-revenue',
     'overdue',
     'future',
     'expenses',
@@ -62,11 +63,14 @@ function validDate(
 }
 
 type RpcResult = {
-  rows?: unknown
+  rows?:
+    unknown
 
-  total?: unknown
+  total?:
+    unknown
 
-  total_amount?: unknown
+  total_amount?:
+    unknown
 }
 
 function parseResult(
@@ -109,7 +113,8 @@ function parseResult(
     !Number.isInteger(
       total
     ) ||
-    total < 0 ||
+    total <
+      0 ||
     !Number.isFinite(
       totalAmount
     )
@@ -129,7 +134,8 @@ function parseResult(
 }
 
 export async function GET(
-  req: NextRequest
+  req:
+    NextRequest
 ) {
   const supabase =
     await createClient()
@@ -248,7 +254,8 @@ export async function GET(
     Number.isInteger(
       rawPage
     ) &&
-    rawPage > 0
+    rawPage >
+      0
       ? rawPage
       : 1
 
@@ -264,7 +271,8 @@ export async function GET(
     !validDate(
       to
     ) ||
-    from > to ||
+    from >
+      to ||
     ![
       'preview',
       'export',
@@ -316,8 +324,11 @@ export async function GET(
     estateDate()
 
   async function loadPage(
-    limit: number,
-    offset: number
+    limit:
+      number,
+
+    offset:
+      number
   ) {
     if (
       type ===
@@ -329,6 +340,78 @@ export async function GET(
       } =
         await supabase.rpc(
           'admin_collected_payments_page',
+          {
+            p_from:
+              from,
+
+            p_to:
+              to,
+
+            p_limit:
+              limit,
+
+            p_offset:
+              offset,
+          }
+        )
+
+      if (error) {
+        throw new Error(
+          error.message
+        )
+      }
+
+      return parseResult(
+        data
+      )
+    }
+
+    if (
+      type ===
+      'gate-revenue'
+    ) {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          'admin_gate_revenue_page',
+          {
+            p_from:
+              from,
+
+            p_to:
+              to,
+
+            p_limit:
+              limit,
+
+            p_offset:
+              offset,
+          }
+        )
+
+      if (error) {
+        throw new Error(
+          error.message
+        )
+      }
+
+      return parseResult(
+        data
+      )
+    }
+
+    if (
+      type ===
+      'income-statement'
+    ) {
+      const {
+        data,
+        error,
+      } =
+        await supabase.rpc(
+          'admin_income_statement_page',
           {
             p_from:
               from,
@@ -426,19 +509,6 @@ export async function GET(
       )
     }
 
-    /*
-     * Load the first export batch before creating a response.
-     *
-     * This gives us:
-     *
-     *   - the total row count
-     *   - report totals
-     *   - a chance to return a normal JSON error if the first
-     *     database request fails
-     *
-     * CSV batches after this point are streamed directly to the
-     * response and are never accumulated into one large array.
-     */
     const firstBatch =
       await loadPage(
         EXPORT_BATCH_SIZE,
@@ -480,8 +550,7 @@ export async function GET(
                 true
               ) {
                 if (
-                  batch.rows
-                    .length >
+                  batch.rows.length >
                   0
                 ) {
                   controller.enqueue(
@@ -496,12 +565,10 @@ export async function GET(
                 }
 
                 offset +=
-                  batch.rows
-                    .length
+                  batch.rows.length
 
                 if (
-                  batch.rows
-                    .length ===
+                  batch.rows.length ===
                     0 ||
                   offset >=
                     batch.total
@@ -550,14 +617,6 @@ export async function GET(
       )
     }
 
-    /*
-     * PDFs are generated in the browser using jsPDF.
-     *
-     * Very large tables produce impractically large PDFs and
-     * require the complete JSON dataset to be held in browser
-     * memory. Keep PDF useful for normal operational reports
-     * and direct very large exports to streaming CSV instead.
-     */
     if (
       firstBatch.total >
       PDF_EXPORT_MAX_ROWS
@@ -595,8 +654,7 @@ export async function GET(
       ]
 
     let offset =
-      firstBatch.rows
-        .length
+      firstBatch.rows.length
 
     while (
       offset <
@@ -609,8 +667,7 @@ export async function GET(
         )
 
       if (
-        batch.rows
-          .length ===
+        batch.rows.length ===
         0
       ) {
         break
@@ -621,8 +678,7 @@ export async function GET(
       )
 
       offset +=
-        batch.rows
-          .length
+        batch.rows.length
     }
 
     return NextResponse.json(

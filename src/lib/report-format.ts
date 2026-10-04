@@ -6,6 +6,7 @@ import {
 export type ReportType =
   | 'due'
   | 'collected'
+  | 'gate-revenue'
   | 'overdue'
   | 'future'
   | 'expenses'
@@ -22,12 +23,24 @@ export const REPORT_LABELS:
     ReportType,
     string
   > = {
-  due: 'Due Bills',
-  collected: 'Collected',
-  overdue: 'Overdue',
+  due:
+    'Due Bills',
+
+  collected:
+    'Collected',
+
+  'gate-revenue':
+    'Gate Revenue',
+
+  overdue:
+    'Overdue',
+
   future:
     'Bills Expected in Future',
-  expenses: 'Expenses',
+
+  expenses:
+    'Expenses',
+
   'income-statement':
     'Income Statement',
 }
@@ -259,7 +272,10 @@ export function reportColumns(
         'house',
 
       label:
-        'Target',
+        type ===
+        'gate-revenue'
+          ? 'Payer / Company'
+          : 'Target',
     },
 
     {
@@ -275,11 +291,16 @@ export function reportColumns(
         'period',
 
       label:
-        'Period',
+        type ===
+        'gate-revenue'
+          ? 'Vehicle / House'
+          : 'Period',
     },
 
     ...(type ===
-    'collected'
+      'collected' ||
+    type ===
+      'gate-revenue'
       ? [
           {
             key:
@@ -294,7 +315,10 @@ export function reportColumns(
               'reference',
 
             label:
-              'Payment ID',
+              type ===
+              'gate-revenue'
+                ? 'Gate Payment ID'
+                : 'Payment ID',
           },
 
           {
@@ -413,12 +437,6 @@ function escapeCsv(
   )
 }
 
-/*
- * Returns the CSV metadata/header section only.
- *
- * The UTF-8 BOM belongs here so streaming exports emit it
- * exactly once, regardless of the number of row batches.
- */
 export function reportCsvHeader(
   type:
     ReportType,
@@ -492,12 +510,6 @@ export function reportCsvHeader(
   )
 }
 
-/*
- * Returns only CSV data rows.
- *
- * There is deliberately no BOM and no header here so this can
- * safely be called for every streamed 500-row batch.
- */
 export function reportCsvRows(
   type:
     ReportType,
@@ -536,10 +548,6 @@ export function reportCsvRows(
     )
 }
 
-/*
- * Backward-compatible complete CSV generator used by tests and
- * anywhere a small report is intentionally built in memory.
- */
 export function reportCsv(
   type:
     ReportType,
